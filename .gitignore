@@ -1,27 +1,14 @@
-.dart_tool/
-.packages
-.pub-cache/
-build/
-ios/Pods/
-android/.gradle/
-.android/
-.flutter-plugins
-.flutter-plugins-dependencies
+# Flutter/Dart (project is in subfolder jbgods/)
+jbgods/.dart_tool/
+jbgods/build/
+jbgods/.flutter-plugins
+jbgods/.flutter-plugins-dependencies
+jbgods/.metadata
 
 # IDE
-.vscode/
-.idea/
+jbgods/.idea/
+jbgods/*.iml
+jbgods/.vscode/
 
-# OS
+# macOS
 .DS_Store
-
-# SDKs / archives / media (never commit these)
-flutter_macos_*/
-*.zip
-*.tar
-*.tar.gz
-*.dmg
-*.mp4
-*.mov
-*.wav
-*.iso
