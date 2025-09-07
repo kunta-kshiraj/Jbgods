@@ -1,0 +1,27 @@
+.dart_tool/
+.packages
+.pub-cache/
+build/
+ios/Pods/
+android/.gradle/
+.android/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# SDKs / archives / media (never commit these)
+flutter_macos_*/
+*.zip
+*.tar
+*.tar.gz
+*.dmg
+*.mp4
+*.mov
+*.wav
+*.iso
