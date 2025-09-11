@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../widgets/header_logo.dart';
 import '../../widgets/jb_button.dart';
 import '../../widgets/jb_input.dart';
-import '../../app_state.dart';
+import '../../data/auth_providers.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -16,6 +17,57 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final emailCtrl = TextEditingController();
   final pwdCtrl = TextEditingController();
   final formKey = GlobalKey<FormState>();
+  bool isLoading = false;
+
+  Future<void> _signIn() async {
+    if (!formKey.currentState!.validate()) return;
+    
+    setState(() => isLoading = true);
+    
+    try {
+      final auth = ref.read(firebaseAuthProvider);
+      await auth.signInWithEmailAndPassword(
+        email: emailCtrl.text.trim(),
+        password: pwdCtrl.text,
+      );
+      // Navigation will be handled by router redirect
+    } on FirebaseAuthException catch (e) {
+      String message = 'Login failed. Please try again.';
+      switch (e.code) {
+        case 'user-not-found':
+          message = 'No user found with this email.';
+          break;
+        case 'wrong-password':
+          message = 'Incorrect password.';
+          break;
+        case 'invalid-email':
+          message = 'Invalid email address.';
+          break;
+        case 'user-disabled':
+          message = 'This account has been disabled.';
+          break;
+        case 'too-many-requests':
+          message = 'Too many failed attempts. Please try again later.';
+          break;
+      }
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message)),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('An unexpected error occurred. Please try again.')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -51,32 +103,44 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                     SizedBox(height: 32),
                     JBButton(
-                      label: "Log In",
-                      onPressed: () {
-                        if (!formKey.currentState!.validate()) return;
-                        ref.read(appStateProvider.notifier).logIn();
-                        context.go('/shell/home');
-                      },
+                      label: isLoading ? "Signing In..." : "Log In",
+                      onPressed: isLoading ? null : () => _signIn(),
                     ),
                     SizedBox(height: 16),
-                    // Demo login button
-                    JBButton(
-                      label: "Demo Login (Admin)",
-                      outline: true,
-                      onPressed: () {
-                        ref.read(appStateProvider.notifier).logIn(isAdmin: true);
-                        context.go('/shell/home');
-                      },
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      "Demo Credentials:\nEmail: admin@jbgods.com\nPassword: admin123",
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: Colors.grey[600],
-                        fontSize: 12,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
+                    // Demo login button (for testing)
+                    // JBButton(
+                    //   label: "Demo Login (Admin)",
+                    //   outline: true,
+                    //   onPressed: isLoading ? null : () async {
+                    //     setState(() => isLoading = true);
+                    //     try {
+                    //       final auth = ref.read(firebaseAuthProvider);
+                    //       await auth.signInWithEmailAndPassword(
+                    //         email: 'admin@jbgods.com',
+                    //         password: 'admin123',
+                    //       );
+                    //     } catch (e) {
+                    //       if (mounted) {
+                    //         ScaffoldMessenger.of(context).showSnackBar(
+                    //           const SnackBar(content: Text('Demo login failed. Please sign up first.')),
+                    //         );
+                    //       }
+                    //     } finally {
+                    //       if (mounted) {
+                    //         setState(() => isLoading = false);
+                    //       }
+                    //     }
+                    //   },
+                    // ),
+                    // SizedBox(height: 8),
+                    // Text(
+                    //   "Demo Credentials:\nEmail: admin@jbgods.com\nPassword: admin123",
+                    //   style: theme.textTheme.bodySmall?.copyWith(
+                    //     color: Colors.grey[600],
+                    //     fontSize: 12,
+                    //   ),
+                    //   textAlign: TextAlign.center,
+                    // ),
                     SizedBox(height: 16),
                     JBButton(
                       label: "Sign Up",

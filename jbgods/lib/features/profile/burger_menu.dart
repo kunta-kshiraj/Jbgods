@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../app_state.dart';
+import '../../data/auth_providers.dart';
 import 'edit_profile_sheet.dart';
+import 'package:go_router/go_router.dart';
 
 class BurgerMenuButton extends ConsumerWidget {
   const BurgerMenuButton({super.key});
@@ -51,10 +54,18 @@ class BurgerMenuSheet extends ConsumerWidget {
           ListTile(
             leading: Icon(Icons.logout),
             title: Text("Logout"),
-            onTap: () {
-              ref.read(appStateProvider.notifier).logOut();
-              Navigator.pop(context);
-              Navigator.of(context).pushNamedAndRemoveUntil('/login', (_) => false);
+            onTap: () async {
+              try {
+                await ref.read(firebaseAuthProvider).signOut();
+                ref.read(appStateProvider.notifier).logOut();
+                Navigator.pop(context);
+                context.go('/login');
+              } catch (e) {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Failed to logout. Please try again.')),
+                );
+              }
             },
           ),
         ],

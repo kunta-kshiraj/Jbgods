@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app_state.dart';
+import 'data/auth_providers.dart';
 import 'features/splash/splash_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/signup_screen.dart';
@@ -9,11 +10,12 @@ import 'features/home/home_screen.dart';
 import 'features/map/map_screen.dart';
 import 'features/chat/chat_screen.dart';
 import 'features/profile/profile_screen.dart';
+import 'features/admin/requests_screen.dart';
 import 'widgets/tab_scaffold.dart';
 
-class LoginStateNotifier extends ChangeNotifier {
-  LoginStateNotifier(this._ref) {
-    _ref.listen(appStateProvider.select((s) => s.isLoggedIn), (previous, next) {
+class AuthStateNotifier extends ChangeNotifier {
+  AuthStateNotifier(this._ref) {
+    _ref.listen(authStateChangesProvider, (previous, next) {
       if (previous != next) {
         notifyListeners();
       }
@@ -21,7 +23,6 @@ class LoginStateNotifier extends ChangeNotifier {
   }
 
   final Ref _ref;
-
 }
 
 class MainShell extends ConsumerStatefulWidget {
@@ -91,12 +92,27 @@ class _MainShellState extends ConsumerState<MainShell> {
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/',
-    refreshListenable: LoginStateNotifier(ref),
+    refreshListenable: AuthStateNotifier(ref),
     redirect: (ctx, state) {
-      final isLoggedIn = ref.read(appStateProvider).isLoggedIn;
-      if (!isLoggedIn && state.uri.toString().startsWith('/shell')) {
-        return '/login';
+      final auth = ref.read(authStateChangesProvider); // AsyncValue<User?>
+      final path = state.uri.toString();
+
+      // 1) While Firebase auth is still initializing -> do nothing
+      if (auth.isLoading) return null;
+
+      final user = auth.value;
+
+      // 2) Not logged in: block shell + land on login even from '/'
+      if (user == null) {
+        if (path.startsWith('/shell') || path == '/') return '/login';
+        return null;
       }
+
+      // 3) Logged in: keep them out of auth pages & '/' goes to home
+      if (path == '/' || path == '/login' || path == '/signup') {
+        return '/shell/home';
+      }
+
       return null;
     },
     routes: [
@@ -111,6 +127,25 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/signup',
         builder: (ctx, _) => const SignUpScreen(),
+      ),
+      GoRoute(
+        path: '/admin/requests',
+        redirect: (ctx, state) {
+          final auth = ref.read(authStateChangesProvider);
+          if (auth.isLoading) return null; // wait for Firebase to initialize
+
+          final user = auth.value;
+          if (user == null) return '/login';
+
+          final roleAsync = ref.read(currentUserRoleProvider);
+          if (roleAsync.isLoading) return null;  // wait for Firestore user doc
+
+          final role = roleAsync.value ?? 'first_time'; // 'admin'|'master'|...
+          if (role != 'admin' && role != 'master') return '/shell/home';
+
+          return null;
+        },
+        builder: (ctx, _) => const AdminRequestsScreen(),
       ),
       ShellRoute(
         builder: (ctx, state, child) => MainShell(child: child),

@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 
 class JBButton extends StatelessWidget {
   final String label;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
   final bool outline;
   final bool dense;
   const JBButton({
     required this.label,
-    required this.onPressed,
+    this.onPressed,
     this.outline = false,
     this.dense = false,
     super.key,
