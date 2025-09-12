@@ -2,42 +2,40 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../../widgets/header_logo.dart';
 import '../../widgets/jb_button.dart';
 import '../../widgets/toast.dart';
 import '../../data/auth_providers.dart';
+import '../../data/firestore_streams.dart';
 import '../../utils/date_utils.dart';
 import 'burger_menu.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
-  
+
   @override
   ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _isRequesting = false;
-  
+
   Future<void> _requestMembership() async {
     setState(() => _isRequesting = true);
-    
     try {
       final firestore = ref.read(firestoreProvider);
       final user = ref.read(currentUserProvider);
-      
       if (user == null) return;
-      
-      // Use set with merge: true to avoid create permission issues
+
+      // Using merge keeps the doc and lets rules treat it as update as well.
       await firestore.collection('requests').doc(user.uid).set({
         'status': 'pending',
         'byUid': user.uid,
         'requestedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-      
-      if (mounted) {
-        showJBToast(context, "Request sent successfully!");
-      }
+
+      if (mounted) showJBToast(context, "Request sent successfully!");
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -45,125 +43,102 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         );
       }
     } finally {
-      if (mounted) {
-        setState(() => _isRequesting = false);
-      }
+      if (mounted) setState(() => _isRequesting = false);
     }
   }
-  
+
   Widget _buildRequestButton(
     Map<String, dynamic> userProfile,
     AsyncValue<DocumentSnapshot<Map<String, dynamic>>?> hasPendingRequest,
-    ThemeData theme,
   ) {
     final rejectCount = userProfile['rejectCount'] ?? 0;
-    
-    // Show loading state if currently requesting
+
     if (_isRequesting) {
       return Container(
         decoration: BoxDecoration(
-          color: Colors.orange.withOpacity(0.1),
+          color: Colors.orange.withOpacity(0.10),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: Colors.orange, width: 1),
         ),
-        child: JBButton(
-          label: "Sending Request...",
-          onPressed: null,
-          outline: true,
-        ),
+        child: const JBButton(label: "Sending Request...", onPressed: null, outline: true),
       );
     }
-    
+
     return hasPendingRequest.when(
       data: (requestDoc) {
-        final isPending = requestDoc?.exists == true && requestDoc?.data()?['status'] == 'pending';
-        final isRejected = requestDoc?.exists == true && requestDoc?.data()?['status'] == 'rejected';
-        
-        // Rule: After 3 rejects, button becomes disabled
+        final status = requestDoc?.data()?['status'];
+        final isPending = requestDoc?.exists == true && status == 'pending';
+        final isRejected = requestDoc?.exists == true && status == 'rejected';
+
         if (rejectCount >= 3) {
           return Container(
             decoration: BoxDecoration(
-              color: Colors.red.withOpacity(0.1),
+              color: Colors.red.withOpacity(0.10),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: Colors.red, width: 1),
             ),
-            child: JBButton(
-              label: "Request limit reached",
-              onPressed: null,
-              outline: true,
-            ),
+            child: const JBButton(label: "Request limit reached", onPressed: null, outline: true),
           );
         }
-        
-        // Rule: While pending, button is disabled and shows "Pending member request" in yellow
+
         if (isPending) {
           return Container(
             decoration: BoxDecoration(
-              color: Colors.red.withOpacity(0.5),
+              color: Colors.amber.withOpacity(0.25),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white, width: 1),
+              border: Border.all(color: Colors.amber, width: 1),
             ),
-            child: JBButton(
-              label: "Pending member request",
-              onPressed: null,
-              outline: true,
-            ),
+            child: const JBButton(label: "Pending member request", onPressed: null, outline: true),
           );
         }
-        
-        // Rule: If rejected and rejectCount < 3, user can re-request
-        if (isRejected) {
-          return JBButton(
-            label: "Request to Become Member",
-            onPressed: _requestMembership,
-            outline: true,
-          );
-        }
-        
-        // Rule: First-time user can create a request
+
+        // first_time or rejected (<3) -> can request
         return JBButton(
           label: "Request to Become Member",
           onPressed: _requestMembership,
+          outline: isRejected, // just a small visual hint
         );
       },
-      loading: () => const CircularProgressIndicator(),
+      loading: () => const SizedBox(height: 44, child: Center(child: CircularProgressIndicator())),
       error: (_, __) {
         if (rejectCount >= 3) {
           return Container(
             decoration: BoxDecoration(
-              color: Colors.red.withOpacity(0.1),
+              color: Colors.red.withOpacity(0.10),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: Colors.red, width: 1),
             ),
-            child: JBButton(
-              label: "Request limit reached",
-              onPressed: null,
-              outline: true,
-            ),
+            child: const JBButton(label: "Request limit reached", onPressed: null, outline: true),
           );
         }
-        return JBButton(
-          label: "Request to Become Member",
-          onPressed: _requestMembership,
-        );
+        return JBButton(label: "Request to Become Member", onPressed: _requestMembership);
       },
     );
   }
-  
+
   @override
   Widget build(BuildContext context) {
     final userProfile = ref.watch(userProfileProvider);
-    final userRole = ref.watch(userRoleProvider);
+    final userRole = ref.watch(userRoleProvider); // 'first_time' | 'member' | 'admin' | 'master'
     final isAdmin = ref.watch(isAdminProvider);
+    final isMaster = userRole == 'master';
     final theme = Theme.of(context);
-    
-    // Check if there's a pending request
+
+    // Pending request stream
     final hasPendingRequest = ref.watch(pendingRequestProvider);
-    
-    if (userProfile == null) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+
+    // Community count label (only compute/watch for master to avoid rule errors)
+    String communityLabel = '';
+    if (isMaster) {
+      final countAsync = ref.watch(communityCountProvider);
+      communityLabel = countAsync.maybeWhen(
+        data: (n) => 'Community ($n)',
+        orElse: () => 'Community (...)',
       );
+    }
+
+    if (userProfile == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     return Scaffold(
@@ -173,58 +148,99 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Stack(
-              children: [
-                const HeaderLogo(),
-                Positioned(
-                  top: 35,
-                  right: 0,
-                  child: const BurgerMenuButton(),
-                ),
+              children: const [
+                HeaderLogo(),
+                Positioned(top: 35, right: 0, child: BurgerMenuButton()),
               ],
             ),
-            SizedBox(height: 24),
+            const SizedBox(height: 24),
             Container(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(color: theme.colorScheme.primary, width: 4),
               ),
-              padding: EdgeInsets.all(4),
+              padding: const EdgeInsets.all(4),
               child: CircleAvatar(
                 radius: 44,
                 backgroundColor: theme.scaffoldBackgroundColor,
                 backgroundImage: NetworkImage(userProfile['avatarUrl'] ?? ''),
                 child: (userProfile['avatarUrl'] ?? '').isEmpty
-                    ? Text("JB GODS", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold))
+                    ? const Text("JB GODS", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold))
                     : null,
               ),
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             Text("Username: ${userProfile['username']}", style: theme.textTheme.bodyMedium?.copyWith(fontSize: 18)),
-            SizedBox(height: 6),
+            const SizedBox(height: 6),
             Text("Age: ${ageFromDob(userProfile['dob'])}", style: theme.textTheme.bodyMedium),
-            SizedBox(height: 6),
+            const SizedBox(height: 6),
             Text("Mail ID: ${userProfile['email']}", style: theme.textTheme.bodyMedium),
-            SizedBox(height: 6),
+            const SizedBox(height: 6),
             Text("State: ${userProfile['state'] ?? 'Not provided'}", style: theme.textTheme.bodyMedium),
-            SizedBox(height: 6),
+            const SizedBox(height: 6),
             Text("Country: ${userProfile['country'] ?? 'Not provided'}", style: theme.textTheme.bodyMedium),
-            SizedBox(height: 6),
-            Text("Role: ${userRole.toUpperCase()}", style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.primary,
-              fontWeight: FontWeight.bold,
-            )),
-            SizedBox(height: 24),
-            
-            // Show different buttons based on user role and request status
+            const SizedBox(height: 6),
+            Text(
+              "Role: ${userRole.toUpperCase()}",
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // first-time users see the request button and message
             if (userRole == 'first_time') ...[
-              _buildRequestButton(userProfile, hasPendingRequest, theme),
+              _buildRequestButton(userProfile, hasPendingRequest),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: theme.colorScheme.primary.withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      color: theme.colorScheme.primary,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        "Become a member to get access for the app",
+                        style: TextStyle(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.w500,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ] else if (isAdmin) ...[
               JBButton(
                 label: "Admin Requests",
                 onPressed: () => context.go('/admin/requests'),
               ),
             ],
-            SizedBox(height: 32),
+
+            // Master-only Community button with count
+            if (isMaster) ...[
+              const SizedBox(height: 12),
+              JBButton(
+                label: communityLabel,
+                onPressed: () => context.go('/admin/community'),
+              ),
+            ],
+
+            const SizedBox(height: 32),
           ],
         ),
       ),

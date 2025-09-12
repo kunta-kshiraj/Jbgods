@@ -64,6 +64,7 @@ final userRoleProvider = Provider<String>((ref) {
   );
 });
 
+
 /// Raw profile map (null while loading/missing)
 final userProfileProvider = Provider<Map<String, dynamic>?>((ref) {
   final docAsync = ref.watch(userDocProvider);
@@ -97,3 +98,48 @@ final pendingRequestProvider =
   }
   return firestore.collection('requests').doc(user.uid).snapshots();
 });
+
+
+// Count of admins + members (NOT first_time, NOT master)
+final communityCountProvider = StreamProvider<int>((ref) {
+  final fs = ref.watch(firestoreProvider);
+  return fs
+      .collection('users')
+      .where('role', whereIn: ['admin', 'member'])
+      .snapshots()
+      .map((s) => s.size);
+});
+
+// Lists for the Community page - only accessible by master
+final adminsStreamProvider =
+    StreamProvider<QuerySnapshot<Map<String, dynamic>>>((ref) {
+  final fs = ref.watch(firestoreProvider);
+  final userRole = ref.watch(userRoleProvider);
+  
+  // Only query if user is master
+  if (userRole != 'master') {
+    return const Stream<QuerySnapshot<Map<String, dynamic>>>.empty();
+  }
+  
+  return fs
+      .collection('users')
+      .where('role', isEqualTo: 'admin')
+      .snapshots();
+});
+
+final membersStreamProvider =
+    StreamProvider<QuerySnapshot<Map<String, dynamic>>>((ref) {
+  final fs = ref.watch(firestoreProvider);
+  final userRole = ref.watch(userRoleProvider);
+  
+  // Only query if user is master
+  if (userRole != 'master') {
+    return const Stream<QuerySnapshot<Map<String, dynamic>>>.empty();
+  }
+  
+  return fs
+      .collection('users')
+      .where('role', isEqualTo: 'member')
+      .snapshots();
+});
+

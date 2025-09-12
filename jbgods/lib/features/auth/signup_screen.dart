@@ -80,7 +80,11 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
         'createdAt': FieldValue.serverTimestamp(),
       });
       
-      // Navigation will be handled by router redirect
+      // Wait a moment for the auth state to update
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // Navigate to profile page for first-time users
+      if (mounted) context.go('/shell/profile');
     } on FirebaseAuthException catch (e) {
       String message = 'Sign up failed. Please try again.';
       switch (e.code) {

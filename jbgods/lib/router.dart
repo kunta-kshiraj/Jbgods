@@ -11,6 +11,7 @@ import 'features/map/map_screen.dart';
 import 'features/chat/chat_screen.dart';
 import 'features/profile/profile_screen.dart';
 import 'features/admin/requests_screen.dart';
+import 'features/community/community_screen.dart';
 import 'widgets/tab_scaffold.dart';
 
 class AuthStateNotifier extends ChangeNotifier {
@@ -25,21 +26,40 @@ class AuthStateNotifier extends ChangeNotifier {
   final Ref _ref;
 }
 
-class MainShell extends ConsumerStatefulWidget {
+class MainShell extends ConsumerWidget {
   final Widget child;
   const MainShell({required this.child, super.key});
 
   @override
-  ConsumerState<MainShell> createState() => _MainShellState();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final userRole = ref.watch(userRoleProvider);
+    
+    // First-time users ONLY see the profile page - no navigation
+    if (userRole == 'first_time') {
+      return const ProfileScreen();
+    }
+    
+    // Members and admins get the full navigation
+    return _MainShellWithNavigation(child: child);
+  }
 }
 
-class _MainShellState extends ConsumerState<MainShell> {
+class _MainShellWithNavigation extends ConsumerStatefulWidget {
+  final Widget child;
+  const _MainShellWithNavigation({required this.child});
+
+  @override
+  ConsumerState<_MainShellWithNavigation> createState() => _MainShellWithNavigationState();
+}
+
+class _MainShellWithNavigationState extends ConsumerState<_MainShellWithNavigation> {
   int _currentIndex = 0;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final location = GoRouterState.of(context).uri.toString();
+    
     switch (location) {
       case '/shell/home':
         _currentIndex = 0;
@@ -108,9 +128,25 @@ final routerProvider = Provider<GoRouter>((ref) {
         return null;
       }
 
-      // 3) Logged in: keep them out of auth pages & '/' goes to home
+      // 3) Logged in: check user role and redirect accordingly
       if (path == '/' || path == '/login' || path == '/signup') {
-        return '/shell/home';
+        final roleAsync = ref.read(currentUserRoleProvider);
+        if (roleAsync.isLoading) return null; // wait for Firestore user doc
+        
+        final role = roleAsync.value ?? 'first_time';
+        if (role == 'first_time') {
+          return '/shell/profile'; // First-time users only see profile
+        }
+        return '/shell/home'; // Members and admins go to home
+      }
+
+      // 4) First-time users can only access profile page
+      final roleAsync = ref.read(currentUserRoleProvider);
+      if (roleAsync.isLoading) return null; // wait for Firestore user doc
+      
+      final role = roleAsync.value ?? 'first_time';
+      if (role == 'first_time' && !path.startsWith('/shell/profile')) {
+        return '/shell/profile'; // Redirect first-time users to profile
       }
 
       return null;
@@ -146,6 +182,22 @@ final routerProvider = Provider<GoRouter>((ref) {
           return null;
         },
         builder: (ctx, _) => const AdminRequestsScreen(),
+      ),
+      GoRoute(
+        path: '/admin/community',
+        redirect: (ctx, state) {
+          final auth = ref.read(authStateChangesProvider);
+          if (auth.isLoading) return null;
+          final user = auth.value;
+          if (user == null) return '/login';
+
+          final roleAsync = ref.read(currentUserRoleProvider);
+          if (roleAsync.isLoading) return null;
+          final role = roleAsync.value ?? 'first_time';
+          if (role != 'master') return '/shell/home';
+          return null;
+        },
+        builder: (ctx, _) => const CommunityScreen(),
       ),
       ShellRoute(
         builder: (ctx, state, child) => MainShell(child: child),

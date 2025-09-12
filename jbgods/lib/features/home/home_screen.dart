@@ -21,6 +21,7 @@ class HomeScreen extends ConsumerWidget {
     return Scaffold(
       floatingActionButton: isAdmin
           ? FloatingActionButton(
+              heroTag:'eventsFab',
               onPressed: () => _showEventSheet(context, ref),
               child: const Icon(Icons.add),
             )

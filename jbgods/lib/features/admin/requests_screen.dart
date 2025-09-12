@@ -127,6 +127,12 @@ class _RequestCard extends ConsumerWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Request approved - User is now $newRole')),
         );
+        // Refresh user data to reflect role changes
+        ref.invalidate(currentUserRoleProvider);
+        ref.invalidate(userProfileProvider);
+        ref.invalidate(adminsStreamProvider);
+        ref.invalidate(membersStreamProvider);
+        ref.invalidate(communityCountProvider);
       }
     } catch (e) {
       if (context.mounted) {
@@ -171,6 +177,12 @@ class _RequestCard extends ConsumerWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Request rejected')),
         );
+        // Refresh user data to reflect changes
+        ref.invalidate(currentUserRoleProvider);
+        ref.invalidate(userProfileProvider);
+        ref.invalidate(adminsStreamProvider);
+        ref.invalidate(membersStreamProvider);
+        ref.invalidate(communityCountProvider);
       }
     } catch (e) {
       if (context.mounted) {

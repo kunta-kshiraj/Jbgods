@@ -30,7 +30,31 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         email: emailCtrl.text.trim(),
         password: pwdCtrl.text,
       );
-      // Navigation will be handled by router redirect
+      
+      // Wait a moment for the auth state to update
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // Check user role and navigate accordingly
+      final roleAsync = ref.read(currentUserRoleProvider);
+      if (roleAsync.hasValue) {
+        final role = roleAsync.value ?? 'first_time';
+        if (role == 'first_time') {
+          if (mounted) context.go('/shell/profile');
+        } else {
+          if (mounted) context.go('/shell/home');
+        }
+      } else {
+        // If role is still loading, wait a bit more
+        await Future.delayed(const Duration(milliseconds: 1000));
+        final role = ref.read(userRoleProvider);
+        if (mounted) {
+          if (role == 'first_time') {
+            context.go('/shell/profile');
+          } else {
+            context.go('/shell/home');
+          }
+        }
+      }
     } on FirebaseAuthException catch (e) {
       String message = 'Login failed. Please try again.';
       switch (e.code) {
@@ -104,7 +128,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     SizedBox(height: 32),
                     JBButton(
                       label: isLoading ? "Signing In..." : "Log In",
-                      onPressed: isLoading ? null : () => _signIn(),
+                      onPressed: isLoading ? null : _signIn,
                     ),
                     SizedBox(height: 16),
                     // Demo login button (for testing)
