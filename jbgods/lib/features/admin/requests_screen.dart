@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../../widgets/header_logo.dart';
 import '../../widgets/jb_button.dart';
 import '../../data/auth_providers.dart';
 
@@ -11,13 +10,13 @@ class AdminRequestsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isAdmin = ref.watch(isAdminProvider);
+    final userRole = ref.watch(userRoleProvider);
     final theme = Theme.of(context);
     
-    // Redirect if not admin
-    if (!isAdmin) {
+    // Redirect if not admin or master
+    if (userRole != 'admin' && userRole != 'master') {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        context.go('/shell/profile');
+        context.go('/shell/home');
       });
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
@@ -36,6 +35,7 @@ class AdminRequestsScreen extends ConsumerWidget {
         stream: ref.read(firestoreProvider)
             .collection('requests')
             .where('status', isEqualTo: 'pending')
+            // Note: Removed orderBy to avoid composite index requirement
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -75,6 +75,7 @@ class AdminRequestsScreen extends ConsumerWidget {
                 requestId: request.id,
                 byUid: byUid,
                 requestedAt: (data['requestedAt'] as Timestamp?)?.toDate(),
+                userRole: userRole,
               );
             },
           );
@@ -88,24 +89,39 @@ class _RequestCard extends ConsumerWidget {
   final String requestId;
   final String byUid;
   final DateTime? requestedAt;
+  final String userRole;
 
   const _RequestCard({
     required this.requestId,
     required this.byUid,
     this.requestedAt,
+    required this.userRole,
   });
 
-  Future<void> _approveRequest(WidgetRef ref, BuildContext context, String newRole) async {
+  Future<void> _acceptRequest(WidgetRef ref, BuildContext context, String newRole) async {
     try {
       final firestore = ref.read(firestoreProvider);
+      final currentUser = ref.read(currentUserProvider);
       
-      // Update user role
-      await firestore.collection('users').doc(byUid).update({
-        'role': newRole,
+      if (currentUser == null) return;
+
+      await firestore.runTransaction((transaction) async {
+        // Update user role
+        transaction.update(
+          firestore.collection('users').doc(byUid),
+          {'role': newRole},
+        );
+        
+        // Update request status
+        transaction.update(
+          firestore.collection('requests').doc(requestId),
+          {
+            'status': 'approved',
+            'deciderUid': currentUser.uid,
+            'decidedAt': FieldValue.serverTimestamp(),
+          },
+        );
       });
-      
-      // Delete the request
-      await firestore.collection('requests').doc(requestId).delete();
       
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -115,7 +131,7 @@ class _RequestCard extends ConsumerWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to approve request')),
+          SnackBar(content: Text('Failed to approve request: $e')),
         );
       }
     }
@@ -124,20 +140,31 @@ class _RequestCard extends ConsumerWidget {
   Future<void> _rejectRequest(WidgetRef ref, BuildContext context) async {
     try {
       final firestore = ref.read(firestoreProvider);
+      final currentUser = ref.read(currentUserProvider);
       
-      // Get current user data
-      final userDoc = await firestore.collection('users').doc(byUid).get();
-      final currentRejectCount = userDoc.data()?['rejectCount'] ?? 0;
-      
-      // Increment reject count
-      await firestore.collection('users').doc(byUid).update({
-        'rejectCount': currentRejectCount + 1,
-      });
-      
-      // Update request status
-      await firestore.collection('requests').doc(requestId).update({
-        'status': 'rejected',
-        'rejectedAt': FieldValue.serverTimestamp(),
+      if (currentUser == null) return;
+
+      await firestore.runTransaction((transaction) async {
+        // Get current user data
+        final userDoc = await transaction.get(firestore.collection('users').doc(byUid));
+        final currentRejectCount = userDoc.data()?['rejectCount'] ?? 0;
+        final newRejectCount = (currentRejectCount + 1).clamp(0, 3);
+        
+        // Increment reject count (capped at 3)
+        transaction.update(
+          firestore.collection('users').doc(byUid),
+          {'rejectCount': newRejectCount},
+        );
+        
+        // Update request status
+        transaction.update(
+          firestore.collection('requests').doc(requestId),
+          {
+            'status': 'rejected',
+            'deciderUid': currentUser.uid,
+            'decidedAt': FieldValue.serverTimestamp(),
+          },
+        );
       });
       
       if (context.mounted) {
@@ -148,7 +175,7 @@ class _RequestCard extends ConsumerWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to reject request')),
+          SnackBar(content: Text('Failed to reject request: $e')),
         );
       }
     }
@@ -240,19 +267,21 @@ class _RequestCard extends ConsumerWidget {
                   children: [
                     Expanded(
                       child: JBButton(
-                        label: 'Approve as Member',
+                        label: 'Accept as Member',
                         dense: true,
-                        onPressed: () => _approveRequest(ref, context, 'member'),
+                        onPressed: () => _acceptRequest(ref, context, 'member'),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: JBButton(
-                        label: 'Approve as Admin',
-                        dense: true,
-                        onPressed: () => _approveRequest(ref, context, 'admin'),
+                    if (userRole == 'master') ...[
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: JBButton(
+                          label: 'Accept as Admin',
+                          dense: true,
+                          onPressed: () => _acceptRequest(ref, context, 'admin'),
+                        ),
                       ),
-                    ),
+                    ],
                     const SizedBox(width: 8),
                     Expanded(
                       child: JBButton(

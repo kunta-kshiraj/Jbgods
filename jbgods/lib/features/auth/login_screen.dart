@@ -141,12 +141,32 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     //   ),
                     //   textAlign: TextAlign.center,
                     // ),
-                    SizedBox(height: 16),
-                    JBButton(
-                      label: "Sign Up",
-                      outline: true,
-                      onPressed: () => context.go('/signup'),
-                    )
+                    SizedBox(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          "Don't have an account? ",
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            onTap: () => context.go('/signup'),
+                            child: Text(
+                              "Click here to sign up",
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.primary,
+                                fontWeight: FontWeight.bold,
+                                decoration: TextDecoration.underline,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
