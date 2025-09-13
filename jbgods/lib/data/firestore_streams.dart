@@ -43,4 +43,14 @@ final eventsQueryProvider = StreamProvider<QuerySnapshot<Map<String, dynamic>>>(
   );
 });
 
+final userLocationsStreamProvider =
+    StreamProvider<QuerySnapshot<Map<String, dynamic>>>((ref) {
+  final fs = ref.watch(firestoreProvider);
+  final isAdmin = ref.watch(isAdminProvider);
+  final q = fs.collection('userLocations');
+  return isAdmin
+      ? q.snapshots()
+      : q.where('shareScope', isEqualTo: 'ALL').snapshots();
+});
+
 

@@ -143,6 +143,51 @@ class _RequestCard extends ConsumerWidget {
     }
   }
 
+  Future<void> _deleteOrphanedRequest(WidgetRef ref, BuildContext context) async {
+    try {
+      final firestore = ref.read(firestoreProvider);
+      
+      // Show confirmation dialog
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Delete Orphaned Request'),
+          content: const Text(
+            'This request belongs to a deleted user. Are you sure you want to delete this request?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      );
+      
+      if (confirmed != true) return;
+      
+      // Delete the orphaned request
+      await firestore.collection('requests').doc(requestId).delete();
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Orphaned request deleted')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete request: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _rejectRequest(WidgetRef ref, BuildContext context) async {
     try {
       final firestore = ref.read(firestoreProvider);
@@ -210,9 +255,70 @@ class _RequestCard extends ConsumerWidget {
         
         final userData = userSnapshot.data!.data() as Map<String, dynamic>?;
         if (userData == null) {
-          return const Card(
-            child: ListTile(
-              title: Text('User not found'),
+          // User has been deleted but request still exists
+          return Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            color: Colors.red.withOpacity(0.1),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const CircleAvatar(
+                        backgroundColor: Colors.red,
+                        child: Icon(Icons.person_off, color: Colors.white),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'User Deleted',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red[800],
+                              ),
+                            ),
+                            Text(
+                              'User ID: $byUid',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: Colors.grey[600],
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                            if (requestedAt != null)
+                              Text(
+                                'Requested: ${_formatDate(requestedAt!)}',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () => _deleteOrphanedRequest(ref, context),
+                          icon: const Icon(Icons.delete, size: 16),
+                          label: const Text('Delete Request'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           );
         }

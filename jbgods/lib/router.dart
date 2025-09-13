@@ -128,12 +128,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         return null;
       }
 
-      // 3) Logged in: check user role and redirect accordingly
+      // 3) Logged in: redirect from auth pages
       if (path == '/' || path == '/login' || path == '/signup') {
-        final roleAsync = ref.read(currentUserRoleProvider);
-        if (roleAsync.isLoading) return null; // wait for Firestore user doc
-        
-        final role = roleAsync.value ?? 'first_time';
+        // Use userRoleProvider which has a fallback
+        final role = ref.read(userRoleProvider);
         if (role == 'first_time') {
           return '/shell/profile'; // First-time users only see profile
         }
@@ -141,10 +139,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
 
       // 4) First-time users can only access profile page
-      final roleAsync = ref.read(currentUserRoleProvider);
-      if (roleAsync.isLoading) return null; // wait for Firestore user doc
-      
-      final role = roleAsync.value ?? 'first_time';
+      final role = ref.read(userRoleProvider);
       if (role == 'first_time' && !path.startsWith('/shell/profile')) {
         return '/shell/profile'; // Redirect first-time users to profile
       }

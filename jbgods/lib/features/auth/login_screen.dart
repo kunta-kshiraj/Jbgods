@@ -5,7 +5,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../widgets/header_logo.dart';
 import '../../widgets/jb_button.dart';
 import '../../widgets/jb_input.dart';
+import '../../widgets/validation_dialog.dart';
 import '../../data/auth_providers.dart';
+import '../../utils/validation_utils.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -21,6 +23,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _signIn() async {
     if (!formKey.currentState!.validate()) return;
+    
+    // Validate password strength for login
+    final passwordError = ValidationUtils.validatePassword(pwdCtrl.text);
+    if (passwordError != null) {
+      ValidationDialog.show(
+        context,
+        title: 'Password Requirements',
+        message: passwordError,
+      );
+      return;
+    }
     
     setState(() => isLoading = true);
     
@@ -114,16 +127,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       controller: emailCtrl,
                       label: "Email",
                       keyboardType: TextInputType.emailAddress,
-                      validator: (v) =>
-                          v != null && v.contains('@') ? null : "Invalid email",
+                      validator: ValidationUtils.validateEmail,
                     ),
                     SizedBox(height: 16),
                     JBInput(
                       controller: pwdCtrl,
                       label: "Password",
                       obscure: true,
-                      validator: (v) =>
-                          v != null && v.length >= 8 ? null : "At least 8 chars",
+                      validator: ValidationUtils.validatePassword,
                     ),
                     SizedBox(height: 32),
                     JBButton(

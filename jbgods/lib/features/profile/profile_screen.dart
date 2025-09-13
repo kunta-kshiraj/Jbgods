@@ -47,6 +47,32 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
+  Future<void> _logout() async {
+    try {
+      final auth = ref.read(firebaseAuthProvider);
+      await auth.signOut();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Logged out successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to logout: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+
   Widget _buildRequestButton(
     Map<String, dynamic> userProfile,
     AsyncValue<DocumentSnapshot<Map<String, dynamic>>?> hasPendingRequest,
@@ -137,8 +163,59 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       );
     }
 
-    if (userProfile == null) {
+    // Show loading only if we're actually loading, not if there's no profile
+    final userDocAsync = ref.watch(userDocProvider);
+    if (userDocAsync.isLoading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    
+    // If no profile data, show a message with logout option
+    if (userProfile == null) {
+      return Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.person_off, size: 64, color: Colors.grey),
+                const SizedBox(height: 16),
+                Text(
+                  'Account Not Found',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Your account may have been deleted or there was an error loading your profile.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Colors.grey[600],
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 32),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _logout,
+                    icon: const Icon(Icons.logout),
+                    label: const Text('Logout and Sign In Again'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextButton(
+                  onPressed: _logout,
+                  child: const Text('Or try logging out'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
     }
 
     return Scaffold(
@@ -174,7 +251,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             const SizedBox(height: 6),
             Text("Age: ${ageFromDob(userProfile['dob'])}", style: theme.textTheme.bodyMedium),
             const SizedBox(height: 6),
-            Text("Mail ID: ${userProfile['email']}", style: theme.textTheme.bodyMedium),
+            Text("Email: ${userProfile['email']}", style: theme.textTheme.bodyMedium),
             const SizedBox(height: 6),
             Text("State: ${userProfile['state'] ?? 'Not provided'}", style: theme.textTheme.bodyMedium),
             const SizedBox(height: 6),
