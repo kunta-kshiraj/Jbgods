@@ -39,6 +39,7 @@ class BurgerMenuSheet extends ConsumerWidget {
               Navigator.pop(context);
               showModalBottomSheet(
                 context: context,
+                isScrollControlled: true,
                 builder: (ctx) => const EditProfileSheet(),
               );
             },

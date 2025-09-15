@@ -95,50 +95,79 @@ class _EditProfileSheetState extends ConsumerState<EditProfileSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Form(
-        key: formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Edit Profile',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.9,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Drag handle
+          Container(
+            width: 40,
+            height: 4,
+            margin: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 24,
+                  right: 24,
+                  top: 8,
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+                ),
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Edit Profile',
+                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+              const SizedBox(height: 24),
+              JBInput(
+                controller: usernameCtrl, 
+                label: "Username",
+                validator: ValidationUtils.validateUsername,
+              ),
+              const SizedBox(height: 16),
+              JBInput(
+                controller: emailCtrl,
+                label: "Email",
+                keyboardType: TextInputType.emailAddress,
+                validator: ValidationUtils.validateEmail,
+              ),
+              const SizedBox(height: 16),
+              JBInput(
+                controller: stateCtrl, 
+                label: "State",
+              ),
+              const SizedBox(height: 16),
+              JBInput(
+                controller: countryCtrl, 
+                label: "Country",
+              ),
+              const SizedBox(height: 24),
+              JBButton(
+                label: _isLoading ? "Saving..." : "Save Changes",
+                onPressed: _isLoading ? null : _saveProfile,
+              ),
+                      const SizedBox(height: 24), // Extra padding at bottom
+                    ],
+                  ),
+                ),
               ),
             ),
-            const SizedBox(height: 24),
-            JBInput(
-              controller: usernameCtrl, 
-              label: "Username",
-              validator: ValidationUtils.validateUsername,
-            ),
-            const SizedBox(height: 16),
-            JBInput(
-              controller: emailCtrl,
-              label: "Email",
-              keyboardType: TextInputType.emailAddress,
-              validator: ValidationUtils.validateEmail,
-            ),
-            const SizedBox(height: 16),
-            JBInput(
-              controller: stateCtrl, 
-              label: "State",
-            ),
-            const SizedBox(height: 16),
-            JBInput(
-              controller: countryCtrl, 
-              label: "Country",
-            ),
-            const SizedBox(height: 24),
-            JBButton(
-              label: _isLoading ? "Saving..." : "Save Changes",
-              onPressed: _isLoading ? null : _saveProfile,
-            ),
-            const SizedBox(height: 12),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
