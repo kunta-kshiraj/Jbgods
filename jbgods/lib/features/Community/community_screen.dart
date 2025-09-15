@@ -229,19 +229,12 @@ class _UserCard extends StatelessWidget {
               color: body,
               borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Text('Member Date: $since'),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    for (final a in actions) ...[
-                      a,
-                      const SizedBox(width: 8),
-                    ],
-                  ],
-                ),
+                for (final a in actions) ...[
+                  a,
+                  const SizedBox(width: 8),
+                ],
               ],
             ),
           ),

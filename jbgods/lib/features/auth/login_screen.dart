@@ -136,7 +136,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       obscure: true,
                       validator: ValidationUtils.validatePassword,
                     ),
-                    SizedBox(height: 32),
+                    SizedBox(height: 16),
+                    // Forgot Password Link
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        GestureDetector(
+                          onTap: () => context.go('/forgot-password'),
+                          child: Text(
+                            "Forgot Password?",
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.primary,
+                              fontWeight: FontWeight.bold,
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 16),
                     JBButton(
                       label: isLoading ? "Signing In..." : "Log In",
                       onPressed: isLoading ? null : _signIn,

@@ -236,6 +236,9 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       
       final user = userCredential.user!;
       
+      // Send email verification
+      await user.sendEmailVerification();
+      
       // Create user document in Firestore
       await firestore.collection('users').doc(user.uid).set({
         'username': usernameCtrl.text.trim(),
@@ -253,8 +256,8 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       // Wait a moment for the auth state to update
       await Future.delayed(const Duration(milliseconds: 500));
       
-      // Navigate to profile page for first-time users
-      if (mounted) context.go('/shell/profile');
+      // Navigate to verify email page
+      if (mounted) context.go('/verify-email');
     } on FirebaseAuthException catch (e) {
       String message = 'Sign up failed. Please try again.';
       switch (e.code) {

@@ -6,6 +6,8 @@ import 'data/auth_providers.dart';
 import 'features/splash/splash_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/signup_screen.dart';
+import 'features/auth/verify_email_screen.dart';
+import 'features/auth/forgot_password_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/map/map_screen.dart';
 import 'features/chat/chat_screen.dart';
@@ -128,8 +130,17 @@ final routerProvider = Provider<GoRouter>((ref) {
         return null;
       }
 
-      // 3) Logged in: redirect from auth pages
-      if (path == '/' || path == '/login' || path == '/signup') {
+      // 3) Logged in: check email verification first
+      if (user.emailVerified == false) {
+        // If email not verified, redirect to verify email page
+        if (path != '/verify-email') {
+          return '/verify-email';
+        }
+        return null; // Stay on verify email page
+      }
+
+      // 4) Email verified: redirect from auth pages
+      if (path == '/' || path == '/login' || path == '/signup' || path == '/verify-email') {
         // Use userRoleProvider which has a fallback
         final role = ref.read(userRoleProvider);
         if (role == 'first_time') {
@@ -158,6 +169,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/signup',
         builder: (ctx, _) => const SignUpScreen(),
+      ),
+      GoRoute(
+        path: '/verify-email',
+        builder: (ctx, _) => const VerifyEmailScreen(),
+      ),
+      GoRoute(
+        path: '/forgot-password',
+        builder: (ctx, _) => const ForgotPasswordScreen(),
       ),
       GoRoute(
         path: '/admin/requests',
