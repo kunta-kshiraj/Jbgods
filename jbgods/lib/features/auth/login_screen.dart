@@ -159,41 +159,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       label: isLoading ? "Signing In..." : "Log In",
                       onPressed: isLoading ? null : _signIn,
                     ),
-                    SizedBox(height: 16),
-                    // Demo login button (for testing)
-                    // JBButton(
-                    //   label: "Demo Login (Admin)",
-                    //   outline: true,
-                    //   onPressed: isLoading ? null : () async {
-                    //     setState(() => isLoading = true);
-                    //     try {
-                    //       final auth = ref.read(firebaseAuthProvider);
-                    //       await auth.signInWithEmailAndPassword(
-                    //         email: 'admin@jbgods.com',
-                    //         password: 'admin123',
-                    //       );
-                    //     } catch (e) {
-                    //       if (mounted) {
-                    //         ScaffoldMessenger.of(context).showSnackBar(
-                    //           const SnackBar(content: Text('Demo login failed. Please sign up first.')),
-                    //         );
-                    //       }
-                    //     } finally {
-                    //       if (mounted) {
-                    //         setState(() => isLoading = false);
-                    //       }
-                    //     }
-                    //   },
-                    // ),
-                    // SizedBox(height: 8),
-                    // Text(
-                    //   "Demo Credentials:\nEmail: admin@jbgods.com\nPassword: admin123",
-                    //   style: theme.textTheme.bodySmall?.copyWith(
-                    //     color: Colors.grey[600],
-                    //     fontSize: 12,
-                    //   ),
-                    //   textAlign: TextAlign.center,
-                    // ),
                     SizedBox(height: 24),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,

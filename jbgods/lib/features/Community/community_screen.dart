@@ -114,23 +114,19 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
                             ? '-'
                             : memberSince.toLocal().toString().split('.').first,
                         actions: [
-                            Expanded(
-                              child: ElevatedButton(
-                                onPressed: () => _setRole(d.id, 'member'),
-                                style: ElevatedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(vertical: 8),
-                                ),
-                                child: const Text('Remove as admin', style: TextStyle(fontSize: 12)),
+                            ElevatedButton(
+                              onPressed: () => _setRole(d.id, 'member'),
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
                               ),
+                              child: const Text('Remove as admin', style: TextStyle(fontSize: 12)),
                             ),
-                            Expanded(
-                              child: OutlinedButton(
-                                onPressed: () => _setRole(d.id, 'first_time', resetRejectCount: true),
-                                style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(vertical: 8),
-                                ),
-                                child: const Text('Remove as member', style: TextStyle(fontSize: 12)),
+                            OutlinedButton(
+                              onPressed: () => _setRole(d.id, 'first_time', resetRejectCount: true),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
                               ),
+                              child: const Text('Remove as member', style: TextStyle(fontSize: 12)),
                             ),
                         ],
                         );
@@ -167,23 +163,19 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
                       since: memberSince == null ? '-' : memberSince.toLocal().toString().split('.').first,
                       actions: [
                         // Member card buttons
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () => _setRole(d.id, 'admin'),
-                            style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                            ),
-                            child: const Text('Accept as admin', style: TextStyle(fontSize: 12)),
+                        ElevatedButton(
+                          onPressed: () => _setRole(d.id, 'admin'),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
                           ),
+                          child: const Text('Accept as admin', style: TextStyle(fontSize: 12)),
                         ),
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => _setRole(d.id, 'first_time', resetRejectCount: true),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                            ),
-                            child: const Text('Remove as member', style: TextStyle(fontSize: 12)),
+                        OutlinedButton(
+                          onPressed: () => _setRole(d.id, 'first_time', resetRejectCount: true),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
                           ),
+                          child: const Text('Remove as member', style: TextStyle(fontSize: 12)),
                         ),
                       ],
                     );
@@ -248,10 +240,13 @@ class _UserCard extends StatelessWidget {
               color: body,
               borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
             ),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: actions,
+            child: Row(
+              children: [
+                for (int i = 0; i < actions.length; i++) ...[
+                  Expanded(child: actions[i]),
+                  if (i < actions.length - 1) const SizedBox(width: 8),
+                ],
+              ],
             ),
           ),
         ],
