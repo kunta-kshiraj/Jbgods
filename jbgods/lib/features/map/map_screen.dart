@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../widgets/header_logo.dart';
@@ -235,8 +236,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               ),
               ),
               children: [
-                 TileLayer(
+                TileLayer(
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  tileProvider: NetworkTileProvider(),
+                  userAgentPackageName: 'com.jbgods.app',
                 ),
                 // All shared markers
                 StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -260,6 +263,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     }
                     return MarkerLayer(markers: markers);
                   },
+                ),
+                RichAttributionWidget(
+                  attributions: [
+                    TextSourceAttribution(
+                      '© OpenStreetMap contributors',
+                      onTap: () => launchUrl(Uri.parse('https://www.openstreetmap.org/copyright')),
+                    ),
+                  ],
+                  popupInitialDisplayDuration: const Duration(seconds: 0),
                 ),
               ],
             ),

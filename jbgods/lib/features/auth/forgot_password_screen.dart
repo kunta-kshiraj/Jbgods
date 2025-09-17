@@ -54,7 +54,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       builder: (context) => AlertDialog(
         title: const Text('Password Reset Sent'),
         content: const Text(
-          'Password reset link sent! Check your email inbox or in spam folderand follow the instructions to reset your password.',
+          'Password reset link sent! Check your email inbox or in spam folder and follow the instructions to reset your password.',
         ),
         actions: [
           TextButton(
