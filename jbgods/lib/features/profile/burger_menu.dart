@@ -55,10 +55,10 @@ class BurgerMenuSheet extends ConsumerWidget {
           ),
           ListTile(
             leading: const Icon(Icons.privacy_tip_outlined),
-            title: const Text("Privacy Policy"),
+            title: const Text("Terms & Privacy Policy"),
             onTap: () {
               Navigator.pop(context);
-              context.go('/privacy-policy');
+              context.go('/terms-privacy');
             },
           ),
           ListTile(

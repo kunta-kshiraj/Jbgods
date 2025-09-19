@@ -23,12 +23,9 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   final confirmCtrl = TextEditingController();
   final emailCtrl = TextEditingController();
   final nameCtrl = TextEditingController();
-  final dobCtrl = TextEditingController();
-  final stateCtrl = TextEditingController();
-  final countryCtrl = TextEditingController();
   final formKey = GlobalKey<FormState>();
-  DateTime? dob;
   bool isLoading = false;
+  bool agreeToTerms = false;
 
   Future<bool> _isUsernameUnique(String username) async {
     try {
@@ -203,24 +200,16 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       return;
     }
     
-    // Additional DOB validation
-    if (dob == null) {
+    // Validate terms agreement
+    if (!agreeToTerms) {
       ValidationDialog.show(
         context,
-        title: 'Date of Birth Required',
-        message: 'Please select your date of birth',
+        title: 'Terms & Privacy Required',
+        message: 'You must agree to the Terms & Privacy Policy to create an account.',
       );
       return;
     }
     
-    if (dob!.isAfter(DateTime.now())) {
-      ValidationDialog.show(
-        context,
-        title: 'Invalid Date of Birth',
-        message: 'Date cannot be in the future',
-      );
-      return;
-    }
     
     setState(() => isLoading = true);
     
@@ -244,9 +233,6 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
         'username': usernameCtrl.text.trim(),
         'name': nameCtrl.text.trim(),
         'email': emailCtrl.text.trim(),
-        'dob': dobCtrl.text,
-        'state': stateCtrl.text.trim(),
-        'country': countryCtrl.text.trim(),
         'avatarUrl': logoUrl,
         'role': 'first_time',
         'rejectCount': 0,
@@ -326,6 +312,14 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                       validator: ValidationUtils.validateUsername,
                     ),
                     SizedBox(height: 12),
+                    JBInput(controller: nameCtrl, label: "Name"),
+                    SizedBox(height: 12),
+                    JBInput(
+                        controller: emailCtrl,
+                        label: "Mail ID",
+                        keyboardType: TextInputType.emailAddress,
+                        validator: ValidationUtils.validateEmail),
+                    SizedBox(height: 12),
                     JBInput(
                         controller: pwdCtrl,
                         label: "Password",
@@ -369,89 +363,51 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                       validator: (v) =>
                           v == pwdCtrl.text ? null : "Passwords do not match",
                     ),
-                    SizedBox(height: 12),
-                    JBInput(
-                        controller: emailCtrl,
-                        label: "Mail ID",
-                        keyboardType: TextInputType.emailAddress,
-                        validator: ValidationUtils.validateEmail),
-                    SizedBox(height: 12),
-                    JBInput(controller: nameCtrl, label: "Name"),
-                    SizedBox(height: 12),
-                    JBInput(
-                      controller: dobCtrl,
-                      label: "Date of Birth (YYYY-MM-DD)",
-                      keyboardType: TextInputType.datetime,
-                      validator: (v) {
-                        if (v == null || v.isEmpty) return "Please enter your date of birth";
-                        if (v.length != 10) return "Please use YYYY-MM-DD format";
-                        
-                        // Try to parse the date
-                        try {
-                          final parts = v.split('-');
-                          if (parts.length != 3) return "Please use YYYY-MM-DD format";
-                          
-                          final year = int.parse(parts[0]);
-                          final month = int.parse(parts[1]);
-                          final day = int.parse(parts[2]);
-                          
-                          final date = DateTime(year, month, day);
-                          
-                          // Check if date is valid
-                          if (date.year != year || date.month != month || date.day != day) {
-                            return "Invalid date";
-                          }
-                          
-                          // Check if date is in the future
-                          if (date.isAfter(DateTime.now())) {
-                            return "Date cannot be in the future";
-                          }
-                          
-                          // Check year range
-                          if (year < 1950 || year > 2025) {
-                            return "Year must be between 1950 and 2025";
-                          }
-                          
-                          dob = date;
-                          return null;
-                        } catch (e) {
-                          return "Please use YYYY-MM-DD format";
-                        }
-                      },
-                      onChanged: (value) {
-                        // Auto-format as user types
-                        if (value.length == 4 && !value.contains('-')) {
-                          dobCtrl.text = '$value-';
-                          // Set cursor position after the dash
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (dobCtrl.text.length >= 5) {
-                              dobCtrl.selection = TextSelection.collapsed(offset: 5);
-                            }
-                          });
-                        } else if (value.length == 7 && value[6] != '-') {
-                          dobCtrl.text = '${value.substring(0, 7)}-';
-                          // Set cursor position after the second dash
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (dobCtrl.text.length >= 8) {
-                              dobCtrl.selection = TextSelection.collapsed(offset: 8);
-                            }
-                          });
-                        }
-                      },
-                    ),
-                    SizedBox(height: 12),
+                    SizedBox(height: 16),
+                    // Terms & Privacy Agreement
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Expanded(
-                          child: JBInput(controller: stateCtrl, label: "State"),
+                        Checkbox(
+                          value: agreeToTerms,
+                          onChanged: (value) {
+                            setState(() {
+                              agreeToTerms = value ?? false;
+                            });
+                          },
+                          activeColor: theme.colorScheme.primary,
                         ),
-                        SizedBox(width: 12),
                         Expanded(
-                          child: JBInput(controller: countryCtrl, label: "Country"),
+                          child: RichText(
+                            text: TextSpan(
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: Colors.grey[700],
+                              ),
+                              children: [
+                                const TextSpan(text: 'I agree to the '),
+                                WidgetSpan(
+                                  child: GestureDetector(
+                                    onTap: () => context.go('/terms-privacy'),
+                                    child: Text(
+                                      'Terms & Privacy Policy',
+                                      style: TextStyle(
+                                        color: theme.colorScheme.primary,
+                                        fontWeight: FontWeight.bold,
+                                        decoration: TextDecoration.underline,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const TextSpan(text: '.'),
+                              ],
+                            ),
+                          ),
                         ),
                       ],
                     ),
-                    SizedBox(height: 24),
+                    SizedBox(height: 8),
+                    // Terms & Privacy Policy Link
+                    
                     JBButton(
                       label: isLoading ? "Creating Account..." : "Sign Up",
                       onPressed: isLoading ? null : () => _signUp(),

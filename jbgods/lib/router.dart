@@ -13,6 +13,7 @@ import 'features/map/map_screen.dart';
 import 'features/chat/chat_screen.dart';
 import 'features/profile/profile_screen.dart';
 import 'features/profile/privacy_policy_screen.dart';
+import 'features/auth/terms_privacy_screen.dart';
 import 'features/admin/requests_screen.dart';
 import 'features/community/community_screen.dart';
 import 'widgets/tab_scaffold.dart';
@@ -152,7 +153,7 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // 4) First-time users can only access profile page (allow Privacy Policy)
       final role = ref.read(userRoleProvider);
-      if (role == 'first_time' && !(path.startsWith('/shell/profile') || path == '/privacy-policy')) {
+      if (role == 'first_time' && !(path.startsWith('/shell/profile') || path == '/privacy-policy' || path == '/terms-privacy')) {
         return '/shell/profile'; // Redirect first-time users to profile
       }
 
@@ -182,6 +183,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/forgot-password',
         builder: (ctx, _) => const ForgotPasswordScreen(),
+      ),
+      GoRoute(
+        path: '/terms-privacy',
+        builder: (ctx, _) => const TermsPrivacyScreen(),
       ),
       GoRoute(
         path: '/admin/requests',

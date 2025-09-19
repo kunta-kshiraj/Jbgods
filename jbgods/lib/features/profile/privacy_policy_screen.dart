@@ -41,8 +41,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
             _Section(
               title: '1. Information We Collect',
               bullets: const [
-                'Account details such as username, email, Date of Birth.',
-                'Profile information you choose to provide (e.g., state, country).',
+                'Account details such as username and email.',
                 'Show your shared location to the audience you select; you can stop sharing anytime.'
                 'Usage and log data necessary to operate the service.',
               ],

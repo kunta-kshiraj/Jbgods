@@ -16,8 +16,6 @@ class EditProfileSheet extends ConsumerStatefulWidget {
 class _EditProfileSheetState extends ConsumerState<EditProfileSheet> {
   late TextEditingController usernameCtrl;
   late TextEditingController emailCtrl;
-  late TextEditingController stateCtrl;
-  late TextEditingController countryCtrl;
   final formKey = GlobalKey<FormState>();
   bool _isLoading = false;
 
@@ -27,8 +25,6 @@ class _EditProfileSheetState extends ConsumerState<EditProfileSheet> {
     // Initialize with empty values, will be populated from Firebase data
     usernameCtrl = TextEditingController();
     emailCtrl = TextEditingController();
-    stateCtrl = TextEditingController();
-    countryCtrl = TextEditingController();
     
     // Load user profile data from Firebase
     _loadUserProfile();
@@ -40,8 +36,6 @@ class _EditProfileSheetState extends ConsumerState<EditProfileSheet> {
       setState(() {
         usernameCtrl.text = userProfile['username'] ?? '';
         emailCtrl.text = userProfile['email'] ?? '';
-        stateCtrl.text = userProfile['state'] ?? '';
-        countryCtrl.text = userProfile['country'] ?? '';
       });
     }
   }
@@ -60,8 +54,6 @@ class _EditProfileSheetState extends ConsumerState<EditProfileSheet> {
       await firestore.collection('users').doc(user.uid).update({
         'username': usernameCtrl.text.trim(),
         'email': emailCtrl.text.trim(),
-        'state': stateCtrl.text.trim(),
-        'country': countryCtrl.text.trim(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
@@ -146,15 +138,6 @@ class _EditProfileSheetState extends ConsumerState<EditProfileSheet> {
                 validator: ValidationUtils.validateEmail,
               ),
               const SizedBox(height: 16),
-              JBInput(
-                controller: stateCtrl, 
-                label: "State",
-              ),
-              const SizedBox(height: 16),
-              JBInput(
-                controller: countryCtrl, 
-                label: "Country",
-              ),
               const SizedBox(height: 24),
               JBButton(
                 label: _isLoading ? "Saving..." : "Save Changes",

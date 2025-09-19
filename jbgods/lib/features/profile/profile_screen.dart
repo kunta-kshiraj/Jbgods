@@ -249,13 +249,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             const SizedBox(height: 20),
             Text("Username: ${userProfile['username']}", style: theme.textTheme.bodyMedium?.copyWith(fontSize: 18)),
             const SizedBox(height: 6),
-            Text("Age: ${ageFromDob(userProfile['dob'])}", style: theme.textTheme.bodyMedium),
-            const SizedBox(height: 6),
             Text("Email: ${userProfile['email']}", style: theme.textTheme.bodyMedium),
-            const SizedBox(height: 6),
-            Text("State: ${userProfile['state'] ?? 'Not provided'}", style: theme.textTheme.bodyMedium),
-            const SizedBox(height: 6),
-            Text("Country: ${userProfile['country'] ?? 'Not provided'}", style: theme.textTheme.bodyMedium),
             const SizedBox(height: 6),
             Text(
               "Role: ${userRole.toUpperCase()}",
