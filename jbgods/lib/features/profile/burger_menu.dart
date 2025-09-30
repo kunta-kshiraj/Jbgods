@@ -96,7 +96,6 @@ class BurgerMenuSheet extends ConsumerWidget {
                 // Remove all user-related Firestore docs (best-effort)
                 await firestore.collection('users').doc(user.uid).delete().catchError((_) {});
                 await firestore.collection('requests').doc(user.uid).delete().catchError((_) {});
-                await firestore.collection('userLocations').doc(user.uid).delete().catchError((_) {});
                 
                 // Delete user's chat messages
                 final messagesQuery = await firestore
@@ -142,7 +141,6 @@ class BurgerMenuSheet extends ConsumerWidget {
                         // Retry deletion after successful reauth
                         await firestore.collection('users').doc(user.uid).delete().catchError((_) {});
                         await firestore.collection('requests').doc(user.uid).delete().catchError((_) {});
-                        await firestore.collection('userLocations').doc(user.uid).delete().catchError((_) {});
                         
                         // Delete user's chat messages
                         final messagesQuery = await firestore

@@ -9,12 +9,12 @@ import 'features/auth/signup_screen.dart';
 import 'features/auth/verify_email_screen.dart';
 import 'features/auth/forgot_password_screen.dart';
 import 'features/home/home_screen.dart';
-import 'features/map/map_screen.dart';
 import 'features/chat/chat_screen.dart';
 import 'features/profile/profile_screen.dart';
 import 'features/profile/privacy_policy_screen.dart';
 import 'features/auth/terms_privacy_screen.dart';
 import 'features/admin/requests_screen.dart';
+import 'features/admin/reports_screen.dart';
 import 'features/community/community_screen.dart';
 import 'widgets/tab_scaffold.dart';
 
@@ -68,14 +68,11 @@ class _MainShellWithNavigationState extends ConsumerState<_MainShellWithNavigati
       case '/shell/home':
         _currentIndex = 0;
         break;
-      case '/shell/map':
+      case '/shell/chat':
         _currentIndex = 1;
         break;
-      case '/shell/chat':
-        _currentIndex = 2;
-        break;
       case '/shell/profile':
-        _currentIndex = 3;
+        _currentIndex = 2;
         break;
     }
   }
@@ -93,19 +90,15 @@ class _MainShellWithNavigationState extends ConsumerState<_MainShellWithNavigati
             context.go('/shell/home');
             break;
           case 1:
-            context.go('/shell/map');
-            break;
-          case 2:
             context.go('/shell/chat');
             break;
-          case 3:
+          case 2:
             context.go('/shell/profile');
             break;
         }
       },
       children: const [
         HomeScreen(),
-        MapScreen(),
         ChatScreen(),
         ProfileScreen(),
       ],
@@ -223,16 +216,28 @@ final routerProvider = Provider<GoRouter>((ref) {
         },
         builder: (ctx, _) => const CommunityScreen(),
       ),
+      GoRoute(
+        path: '/admin/reports',
+        redirect: (ctx, state) {
+          final auth = ref.read(authStateChangesProvider);
+          if (auth.isLoading) return null;
+          final user = auth.value;
+          if (user == null) return '/login';
+
+          final roleAsync = ref.read(currentUserRoleProvider);
+          if (roleAsync.isLoading) return null;
+          final role = roleAsync.value ?? 'first_time';
+          if (role != 'master') return '/shell/home';
+          return null;
+        },
+        builder: (ctx, _) => const ReportsScreen(),
+      ),
       ShellRoute(
         builder: (ctx, state, child) => MainShell(child: child),
         routes: [
           GoRoute(
             path: '/shell/home',
             builder: (ctx, _) => const HomeScreen(),
-          ),
-          GoRoute(
-            path: '/shell/map',
-            builder: (ctx, _) => const MapScreen(),
           ),
           GoRoute(
             path: '/shell/chat',

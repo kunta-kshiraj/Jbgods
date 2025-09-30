@@ -36,58 +36,81 @@ class TermsPrivacyScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Last updated: 9/19/2025',
+              'Last updated: 9/25/2025',
               style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
             ),
             const SizedBox(height: 24),
 
             _Section(
               title: '1. Acceptance of Terms',
-              content: 'By creating an account and using this app, you agree to these Terms & Conditions and this Privacy Policy. If you do not agree, please do not use the app.',
+              content:
+                  'By creating an account and using this app, you agree to these Terms & Conditions and this Privacy Policy. '
+                  'If you do not agree, please do not use the app.',
             ),
 
             _Section(
               title: '2. Who Can Use the App',
-              content: 'Users who became members on admin approval may view content and read admin messages.\n\nOnly authorized admins may send messages.\n\nA Master Admin may remove admins and users who violate these rules.',
+              content:
+                  'Users who became members on admin approval may view content and read admin messages.\n\n'
+                  'Only authorized admins may send messages.\n\n'
+                  'A Master Admin may remove admins and users who violate these rules.\n\n'
+                  'Users also have the ability to report abusive users.',
             ),
 
             _Section(
               title: '3. Community Guidelines (Admins)',
-              content: 'Admins must not post content that is: offensive/abusive, discriminatory/hateful, threatening, illegal, spam, or violating privacy/IP rights.\n\nThe Master Admin may remove admins who violate these rules.\n\nUsers can report concerns at support@jbgods.com.',
+              content:
+                  'We maintain a zero-tolerance policy for objectionable or abusive content.\n\n'
+                  'Admins must not post content that is: offensive, abusive, discriminatory, hateful, threatening, illegal, spam, '
+                  'or violating privacy or intellectual property rights.\n\n'
+                  'Users can report objectionable messages directly within the app. All reports are reviewed by the Master Admin.\n\n'
+                  'The Master Admin may remove or demote admins who violate these rules.\n\n'
+                  'We act on reports within 24 hours by removing the offending content and ejecting the violator.',
             ),
 
             _Section(
               title: '4. Information We Collect',
-              content: 'We may collect:\n\n• Account details: username, name, email, password.\n\n• Location data: only if you choose to share it (see Section 5).\n\n• Usage data: device type, app activity, crash logs (to improve reliability and security).',
+              content:
+                  'We may collect:\n\n'
+                  '• Account details: username, name, email, password.\n\n'
+                  '• Usage data: device type, app activity, crash logs (to improve reliability and security).',
             ),
 
             _Section(
-              title: '5. Location Feature (Your Choice)',
-              content: 'The app allows you to control who can see your location:\n\n1. Admins only - Your location is visible only to authorized admin accounts.\n\n2. Everyone - Your location is visible to all users of the app.\n\n3. Off - You can stop sharing your location at any time.\n\n• You can change this choice at any time in the profile options or in your device\'s system settings.\n\n• We only use your location to display your approximate area as you choose.\n\n• Location is never sold to third parties.\n\n• Location data is stored securely and retained only as long as necessary to provide the feature.',
+              title: '5. How We Use Information',
+              content:
+                  'We use your data to:\n\n'
+                  '• Create and manage accounts.\n\n'
+                  '• Provide admin chat features.\n\n'
+                  '• Improve reliability, security, and support.',
             ),
 
             _Section(
-              title: '6. How We Use Information',
-              content: 'We use your data to:\n\n• Create and manage accounts.\n\n• Provide admin chat features and location-based functionality you enable.\n\n• Improve reliability, security, and support.',
+              title: '6. Sharing of Information',
+              content:
+                  'We do not sell your data.\n\n'
+                  'We may share limited data with service providers strictly to operate the app (e.g., Firebase Authentication, Firestore).\n\n'
+                  'These providers must comply with applicable data protection laws and use the data only to provide their services to us.',
             ),
 
             _Section(
-              title: '7. Sharing of Information',
-              content: 'We do not sell your data.\n\nWe may share limited data with service providers strictly to operate the app (e.g., Firebase Authentication, Firestore, and our map/geolocation provider).\n\nThese providers must comply with applicable data protection laws and use the data only to provide their services to us.',
+              title: '7. Data Storage & Security',
+              content:
+                  'Data is stored securely in cloud services (e.g., Firebase), encrypted in transit and at rest.\n\n'
+                  'We retain data only as long as necessary to provide the service or until you request deletion.\n\n'
+                  'We use reasonable safeguards to prevent unauthorized access, misuse, or disclosure.',
             ),
 
             _Section(
-              title: '8. Data Storage & Security',
-              content: 'Data is stored securely in cloud services (e.g., Firebase), encrypted in transit and at rest.\n\nWe retain data only as long as necessary to provide the service or until you request deletion.\n\nWe use reasonable safeguards to prevent unauthorized access, misuse, or disclosure.',
+              title: '8. Your Rights & Choices',
+              content:
+                  '• Update or delete profile info from within the app.\n\n'
+                  '• Request account deletion from the Profile menu or by contacting us.\n\n'
+                  '• Report objectionable content directly in the app for review by the Master Admin.',
             ),
 
             _Section(
-              title: '9. Your Rights & Choices',
-              content: '• Update or delete profile info from within the app.\n\n• Request account deletion from the Profile menu or by contacting us.\n\n• Manage permissions (including Location) in your device settings.',
-            ),
-
-            _Section(
-              title: '10. Contact Us',
+              title: '9. Contact Us',
               content: 'For questions or requests, contact: support@jbgods.com',
             ),
 

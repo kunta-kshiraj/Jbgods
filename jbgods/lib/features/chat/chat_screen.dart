@@ -118,10 +118,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Future<void> _showMessageActions({
     required String id,
     required String currentText,
+    required String authorId,
+    required String authorName,
     required bool canEdit,
     required bool canDelete,
   }) async {
-    if (!canEdit && !canDelete) return;
+    final me = ref.read(currentUserProvider);
+    final userRole = ref.read(userRoleProvider);
+    final isAdmin = userRole == 'admin' || userRole == 'master';
+    final isMaster = userRole == 'master';
+    final isOwnMessage = me?.uid == authorId;
 
     await showModalBottomSheet(
       context: context,
@@ -129,40 +135,65 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       builder: (_) => SafeArea(
         child: Wrap(
           children: [
-            if (canEdit)
+            // For non-admin users: only show report option for other users' messages
+            if (!isAdmin && !isOwnMessage)
               ListTile(
-                leading: const Icon(Icons.edit),
-                title: const Text('Edit'),
+                leading: const Icon(Icons.flag, color: Colors.red),
+                title: const Text('Report'),
                 onTap: () {
                   Navigator.pop(context);
-                  _editMessage(id, currentText);
+                  _showReportDialog(context, ref, authorId, id, authorName);
                 },
               ),
-            if (canDelete)
-              ListTile(
-                leading: const Icon(Icons.delete, color: Colors.red),
-                title: const Text('Delete'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final ok = await showDialog<bool>(
-                    context: context,
-                    builder: (_) => AlertDialog(
-                      title: const Text('Delete message?'),
-                      content: const Text('This action cannot be undone.'),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                        TextButton(
-                          onPressed: () => Navigator.pop(context, true),
-                          child: const Text('Delete', style: TextStyle(color: Colors.red)),
-                        ),
-                      ],
-                    ),
-                  );
-                  if (ok == true) {
-                    await _deleteMessage(id);
-                  }
-                },
-              ),
+            
+            // For admin users: show edit, delete, and report options
+            if (isAdmin) ...[
+              if (canEdit)
+                ListTile(
+                  leading: const Icon(Icons.edit),
+                  title: const Text('Edit'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _editMessage(id, currentText);
+                  },
+                ),
+              if (canDelete)
+                ListTile(
+                  leading: const Icon(Icons.delete, color: Colors.red),
+                  title: const Text('Delete'),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (_) => AlertDialog(
+                        title: const Text('Delete message?'),
+                        content: const Text('This action cannot be undone.'),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (ok == true) {
+                      await _deleteMessage(id);
+                    }
+                  },
+                ),
+              // Report option for admin users (for other admins' messages)
+              if (!isOwnMessage)
+                ListTile(
+                  leading: const Icon(Icons.flag, color: Colors.red),
+                  title: const Text('Report'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showReportDialog(context, ref, authorId, id, authorName);
+                  },
+                ),
+            ],
+            
             ListTile(
               leading: const Icon(Icons.close),
               title: const Text('Cancel'),
@@ -260,6 +291,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           onLongPress: () => _showMessageActions(
                             id: it.id,
                             currentText: it.text,
+                            authorId: it.authorId,
+                            authorName: it.authorName,
                             canEdit: canEdit,
                             canDelete: canDelete,
                           ),
@@ -282,7 +315,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             const SizedBox(height: 12),
             if (!isAdmin)
               const Text(
-                "Only admins can post here.",
+                "Only admins can send messages here.",
                 style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey),
               ),
 
@@ -384,6 +417,7 @@ class _DateDivider extends StatelessWidget {
 /// Message tile styled like events (primary-tinted card),
 /// First row: Name ..... Time
 /// Second row: Message
+/// Third row: Report button (if not admin)
 class _MessageTile extends StatelessWidget {
   const _MessageTile({
     required this.name,
@@ -426,7 +460,11 @@ class _MessageTile extends StatelessWidget {
               Expanded(
                 child: Text(
                   name,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: theme.colorScheme.primary, // Different color for sender name
+                    fontSize: 14,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -445,12 +483,66 @@ class _MessageTile extends StatelessWidget {
           Text(
             message,
             style: TextStyle(
-              color: theme.colorScheme.onSurface.withOpacity(.95),
+              color: theme.colorScheme.onSurface.withOpacity(.85), // Slightly different opacity for message
               height: 1.26,
+              fontSize: 15,
             ),
           ),
+          
         ],
       ),
     );
+  }
+}
+
+/// Show report dialog and create report
+Future<void> _showReportDialog(BuildContext context, WidgetRef ref, String reportedUserId, String messageId, String reportedUserName) async {
+  final firestore = ref.read(firestoreProvider);
+  final currentUser = ref.read(currentUserProvider);
+  
+  if (currentUser == null) return;
+  
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Report User'),
+      content: Text('Are you sure you want to report $reportedUserName for inappropriate behavior?'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          style: TextButton.styleFrom(foregroundColor: Colors.red),
+          child: const Text('Report'),
+        ),
+      ],
+    ),
+  );
+  
+  if (confirmed != true) return;
+  
+  try {
+    await firestore.collection('reports').add({
+      'reporterId': currentUser.uid,
+      'reportedUserId': reportedUserId,
+      'messageId': messageId,
+      'reportedUserName': reportedUserName,
+      'status': 'pending',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Report submitted successfully')),
+      );
+    }
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to submit report: $e')),
+      );
+    }
   }
 }

@@ -23,7 +23,6 @@ class TabScaffold extends StatelessWidget {
         onTap: onTabSelected,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.event), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Map'),
           BottomNavigationBarItem(icon: Icon(Icons.campaign), label: 'Chat'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
         ],

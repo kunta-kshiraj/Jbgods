@@ -309,6 +309,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 label: communityLabel,
                 onPressed: () => context.go('/admin/community'),
               ),
+              const SizedBox(height: 12),
+              JBButton(
+                label: "Reports",
+                onPressed: () => context.go('/admin/reports'),
+              ),
             ],
 
             const SizedBox(height: 32),
