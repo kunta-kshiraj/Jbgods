@@ -36,7 +36,7 @@ class TermsPrivacyScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Last updated: 9/25/2025',
+              'Last updated: 9/30/2025',
               style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
             ),
             const SizedBox(height: 24),
@@ -106,7 +106,8 @@ class TermsPrivacyScreen extends StatelessWidget {
               content:
                   '• Update or delete profile info from within the app.\n\n'
                   '• Request account deletion from the Profile menu or by contacting us.\n\n'
-                  '• Report objectionable content directly in the app for review by the Master Admin.',
+                  '• Report objectionable content directly in the app for review by the Master Admin.\n\n'
+                  '• Block abusive users: Users can long-press on any message and select "Block User". '
             ),
 
             _Section(

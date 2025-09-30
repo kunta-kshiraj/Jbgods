@@ -128,6 +128,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final isAdmin = userRole == 'admin' || userRole == 'master';
     final isMaster = userRole == 'master';
     final isOwnMessage = me?.uid == authorId;
+    final blockedSet = ref.read(blockedUsersSetProvider).maybeWhen(data: (s) => s, orElse: () => <String>{});
+    final isBlocked = blockedSet.contains(authorId);
 
     await showModalBottomSheet(
       context: context,
@@ -136,7 +138,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         child: Wrap(
           children: [
             // For non-admin users: only show report option for other users' messages
-            if (!isAdmin && !isOwnMessage)
+            if (!isAdmin && !isOwnMessage) ...[
               ListTile(
                 leading: const Icon(Icons.flag, color: Colors.red),
                 title: const Text('Report'),
@@ -145,6 +147,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   _showReportDialog(context, ref, authorId, id, authorName);
                 },
               ),
+              ListTile(
+                leading: Icon(isBlocked ? Icons.person_remove : Icons.block, color: Colors.orange),
+                title: Text(isBlocked ? 'Unblock user' : 'Block user'),
+                onTap: () async {
+                  Navigator.pop(context);
+                  if (isBlocked) {
+                    await _unblockUser(authorId);
+                  } else {
+                    await _blockUser(authorId, authorName);
+                  }
+                },
+              ),
+            ],
             
             // For admin users: show edit, delete, and report options
             if (isAdmin) ...[
@@ -192,6 +207,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     _showReportDialog(context, ref, authorId, id, authorName);
                   },
                 ),
+              if (!isOwnMessage)
+                ListTile(
+                  leading: Icon(isBlocked ? Icons.person_remove : Icons.block, color: Colors.orange),
+                  title: Text(isBlocked ? 'Unblock user' : 'Block user'),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    if (isBlocked) {
+                      await _unblockUser(authorId);
+                    } else {
+                      await _blockUser(authorId, authorName);
+                    }
+                  },
+                ),
             ],
             
             ListTile(
@@ -205,9 +233,57 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
+  Future<void> _blockUser(String blockedUserId, String blockedUserName) async {
+    final me = ref.read(currentUserProvider);
+    if (me == null) return;
+    try {
+      final firestore = ref.read(firestoreProvider);
+      final docId = '${me.uid}_$blockedUserId';
+      await firestore.collection('blockedUsers').doc(docId).set({
+        'blockerId': me.uid,
+        'blockedUserId': blockedUserId,
+        'blockedUserName': blockedUserName,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('User blocked. You will no longer see their messages.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to block: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _unblockUser(String blockedUserId) async {
+    final me = ref.read(currentUserProvider);
+    if (me == null) return;
+    try {
+      final firestore = ref.read(firestoreProvider);
+      final docId = '${me.uid}_$blockedUserId';
+      await firestore.collection('blockedUsers').doc(docId).delete();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('User unblocked.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to unblock: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final messagesStream = ref.watch(messagesQueryProvider);
+    final blockedSetAsync = ref.watch(blockedUsersSetProvider);
     final isAdmin = ref.watch(isAdminProvider);
 
     return Scaffold(
@@ -227,6 +303,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               child: messagesStream.when(
                 data: (snap) {
                   final docs = snap.docs;
+                  final blocked = blockedSetAsync.maybeWhen(data: (s) => s, orElse: () => <String>{});
 
                   // Build a render list that includes date headers.
                   // We keep the query's existing order (likely newest first),
@@ -237,6 +314,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   for (var i = 0; i < docs.length; i++) {
                     final d = docs[i];
                     final data = d.data();
+                    final authorId = (data['authorId'] as String?) ?? '';
+                    if (blocked.contains(authorId)) {
+                      // Skip messages from users this viewer has blocked
+                      continue;
+                    }
                     final ts = (data['createdAt'] as Timestamp?)?.toDate();
                     final local = ts?.toLocal() ?? DateTime.now();
 
@@ -246,7 +328,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     items.add(_MessageItem(
                       id: d.id,
                       text: (data['text'] as String?) ?? '',
-                      authorId: (data['authorId'] as String?) ?? '',
+                      authorId: authorId,
                       authorName: (data['authorName'] as String?) ?? 'Unknown',
                       createdAt: local,
                       dateKey: dateKey,

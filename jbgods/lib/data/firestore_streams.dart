@@ -45,3 +45,31 @@ final eventsQueryProvider = StreamProvider<QuerySnapshot<Map<String, dynamic>>>(
 
 
 
+/// Set of userIds that the current user has blocked
+final blockedUsersSetProvider = StreamProvider<Set<String>>((ref) {
+  final firestore = ref.watch(firestoreProvider);
+  final auth = ref.watch(authStateChangesProvider);
+  return auth.when(
+    data: (user) {
+      if (user == null) {
+        return const Stream<Set<String>>.empty();
+      }
+      return firestore
+          .collection('blockedUsers')
+          .where('blockerId', isEqualTo: user.uid)
+          .snapshots()
+          .map((snap) {
+        final blocked = <String>{};
+        for (final d in snap.docs) {
+          final data = d.data();
+          final id = data['blockedUserId'] as String?;
+          if (id != null && id.isNotEmpty) blocked.add(id);
+        }
+        return blocked;
+      });
+    },
+    loading: () => const Stream<Set<String>>.empty(),
+    error: (_, __) => const Stream<Set<String>>.empty(),
+  );
+});
+

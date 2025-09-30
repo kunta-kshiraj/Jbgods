@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../app_state.dart';
 import '../../data/auth_providers.dart';
+import '../../data/firestore_streams.dart';
 import 'edit_profile_sheet.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -59,6 +60,14 @@ class BurgerMenuSheet extends ConsumerWidget {
             onTap: () {
               Navigator.pop(context);
               context.go('/terms-privacy');
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.block, color: Colors.orange),
+            title: const Text("Blocked Users"),
+            onTap: () {
+              Navigator.pop(context);
+              _showBlockedUsersDialog(context, ref);
             },
           ),
           ListTile(
@@ -199,5 +208,103 @@ class BurgerMenuSheet extends ConsumerWidget {
         ],
       ),
     );
+  }
+}
+
+/// Show blocked users dialog with unblock functionality
+Future<void> _showBlockedUsersDialog(BuildContext context, WidgetRef ref) async {
+  // Read providers BEFORE showing dialog to avoid using ref after widget disposal
+  final firestore = ref.read(firestoreProvider);
+  final currentUser = ref.read(currentUserProvider);
+  
+  if (currentUser == null) return;
+  
+  await showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Blocked Users'),
+      content: SizedBox(
+        width: double.maxFinite,
+        height: 400,
+        child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: firestore
+              .collection('blockedUsers')
+              .where('blockerId', isEqualTo: currentUser.uid)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            
+            if (snapshot.hasError) {
+              return Center(child: Text('Error: ${snapshot.error}'));
+            }
+            
+            final docs = snapshot.data?.docs ?? [];
+            
+            if (docs.isEmpty) {
+              return const Center(
+                child: Text(
+                  'No blocked users',
+                  style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey),
+                ),
+              );
+            }
+            
+            return ListView.builder(
+              itemCount: docs.length,
+              itemBuilder: (context, index) {
+                final doc = docs[index];
+                final data = doc.data();
+                final blockedUserName = data['blockedUserName'] as String? ?? 'Unknown User';
+                final blockedUserId = data['blockedUserId'] as String? ?? '';
+                
+                return ListTile(
+                  leading: const Icon(Icons.person_off, color: Colors.orange),
+                  title: Text(blockedUserName),
+                  subtitle: Text('Blocked'),
+                  trailing: TextButton(
+                    onPressed: () => _unblockUser(ctx, firestore, currentUser.uid, blockedUserId, blockedUserName),
+                    child: const Text('Unblock', style: TextStyle(color: Colors.orange)),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: const Text('Close'),
+        ),
+      ],
+    ),
+  );
+}
+
+/// Unblock a user using the same docId format as chat screen
+Future<void> _unblockUser(BuildContext context, FirebaseFirestore firestore, String blockerId, String blockedUserId, String userName) async {
+  try {
+    // Use the same docId format as the chat screen: ${blockerId}_${blockedUserId}
+    final docId = '${blockerId}_$blockedUserId';
+    print('DEBUG: Attempting to unblock user $blockedUserId with docId: $docId');
+    
+    await firestore.collection('blockedUsers').doc(docId).delete();
+    
+    print('DEBUG: Successfully deleted document $docId');
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$userName has been unblocked')),
+      );
+    }
+  } catch (e) {
+    print('DEBUG: Error during unblock: $e');
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to unblock user: $e')),
+      );
+    }
   }
 }
