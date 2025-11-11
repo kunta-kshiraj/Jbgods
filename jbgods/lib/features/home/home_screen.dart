@@ -36,7 +36,7 @@ class HomeScreen extends ConsumerWidget {
                 const HeaderLogo(),
                 const SizedBox(height: 5),
                 Text(
-                  "Upcoming Events",
+                  "Upcoming Events/Updates",
                   style: Theme.of(context)
                       .textTheme
                       .headlineMedium
@@ -151,10 +151,10 @@ class HomeScreen extends ConsumerWidget {
                 );
                 if (ok == true) {
                   try {
-                    await ref.read(firestoreProvider).collection('events').doc(docId).delete();
+                    await ref.read(firestoreProvider).collection('updates').doc(docId).delete();
                     // ignore: use_build_context_synchronously
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Event deleted')),
+                      const SnackBar(content: Text('Update deleted')),
                     );
                   } catch (e) {
                     // ignore: use_build_context_synchronously
@@ -186,100 +186,113 @@ class HomeScreen extends ConsumerWidget {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (_) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              JBInput(controller: titleCtrl, label: 'Title'),
-              const SizedBox(height: 12),
-              JBInput(controller: descCtrl, label: 'Description'),
-              const SizedBox(height: 12),
-              Row(
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.9,
+          minChildSize: 0.6,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) {
+            return SingleChildScrollView(
+              controller: scrollController,
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 20,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Expanded(
-                    child: Text(
-                      dt == null
-                          ? 'No date selected'
-                          : dt!.toLocal().toString().split('.').first,
-                    ),
+                  JBInput(controller: titleCtrl, label: 'Title'),
+                  const SizedBox(height: 12),
+                  JBInput(controller: descCtrl, label: 'Description'),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          dt == null
+                              ? 'No date selected'
+                              : dt!.toLocal().toString().split('.').first,
+                        ),
+                      ),
+                      JBButton(
+                        label: 'Pick Date',
+                        dense: true,
+                        onPressed: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: dt ?? DateTime.now(),
+                            firstDate: DateTime(1950),
+                            lastDate: DateTime(2100),
+                          );
+                          if (picked != null) {
+                            dt = picked;
+                            Navigator.pop(context);
+                            _showEventSheet(
+                              context,
+                              ref,
+                              docId: docId,
+                              initial: {
+                                'title': titleCtrl.text,
+                                'description': descCtrl.text,
+                                'dateTime':
+                                    dt == null ? null : Timestamp.fromDate(dt!),
+                              },
+                            );
+                          }
+                        },
+                      ),
+                    ],
                   ),
+                  const SizedBox(height: 16),
                   JBButton(
-                    label: 'Pick Date',
-                    dense: true,
+                    label: docId == null ? 'Create' : 'Save',
                     onPressed: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: dt ?? DateTime.now(),
-                        firstDate: DateTime(1950),
-                        lastDate: DateTime(2100),
-                      );
-                      if (picked != null) {
-                        dt = picked;
-                        // Close & reopen to refresh preview text
-                        Navigator.pop(context);
-                        _showEventSheet(
-                          context,
-                          ref,
-                          docId: docId,
-                          initial: {
-                            'title': titleCtrl.text,
-                            'description': descCtrl.text,
-                            'dateTime':
-                                dt == null ? null : Timestamp.fromDate(dt!),
-                          },
+                      try {
+                        final data = <String, dynamic>{
+                          'title': titleCtrl.text.trim(),
+                          'description': descCtrl.text.trim(),
+                          'dateTime':
+                              dt == null ? null : Timestamp.fromDate(dt!),
+                          'createdAt': FieldValue.serverTimestamp(),
+                          'updatedAt': FieldValue.serverTimestamp(),
+                          'createdBy': ref.read(currentUserProvider)?.uid,
+                        };
+                        final col =
+                            ref.read(firestoreProvider).collection('updates');
+                        if (docId == null) {
+                          await col.add(data);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Event created')),
+                          );
+                        } else {
+                          await col.doc(docId).set(data, SetOptions(merge: true));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Event updated')),
+                          );
+                        }
+                        if (Navigator.canPop(context)) Navigator.pop(context);
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Failed to save: $e')),
                         );
                       }
                     },
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              JBButton(
-                label: docId == null ? 'Create' : 'Save',
-                onPressed: () async {
-                  try {
-                    final data = <String, dynamic>{
-                      'title': titleCtrl.text.trim(),
-                      'description': descCtrl.text.trim(),
-                      'dateTime': dt == null ? null : Timestamp.fromDate(dt!),
-                      'createdAt': FieldValue.serverTimestamp(),
-                      'updatedAt': FieldValue.serverTimestamp(),
-                      'createdBy': ref.read(currentUserProvider)?.uid,
-                    };
-                    final col =
-                        ref.read(firestoreProvider).collection('events');
-                    if (docId == null) {
-                      await col.add(data);
-                      // ignore: use_build_context_synchronously
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Event created')),
-                      );
-                    } else {
-                      await col.doc(docId).set(data, SetOptions(merge: true));
-                      // ignore: use_build_context_synchronously
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Event updated')),
-                      );
-                    }
-                    if (Navigator.canPop(context)) Navigator.pop(context);
-                  } catch (e) {
-                    // ignore: use_build_context_synchronously
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Failed to save: $e')),
-                    );
-                  }
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
+            );
+          },
+        );
+      },
     );
+
   }
 }
 

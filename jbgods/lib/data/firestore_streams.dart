@@ -34,7 +34,7 @@ final eventsQueryProvider = StreamProvider<QuerySnapshot<Map<String, dynamic>>>(
         return const Stream<QuerySnapshot<Map<String, dynamic>>>.empty();
       }
       return firestore
-          .collection('events')
+          .collection('updates')
           .orderBy('createdAt', descending: true)
           .snapshots();
     },

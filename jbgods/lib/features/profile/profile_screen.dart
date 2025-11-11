@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:jbgods/widgets/profile_picture_widget.dart';
 
 import '../../widgets/header_logo.dart';
 import '../../widgets/jb_button.dart';
@@ -9,7 +10,11 @@ import '../../widgets/toast.dart';
 import '../../data/auth_providers.dart';
 import '../../data/firestore_streams.dart';
 import '../../utils/date_utils.dart';
+import '../../widgets/profile_picture_widget.dart';
 import 'burger_menu.dart';
+import '../events/participants_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -231,6 +236,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ],
             ),
             const SizedBox(height: 24),
+            // Container(
+            //   decoration: BoxDecoration(
+            //     shape: BoxShape.circle,
+            //     border: Border.all(color: theme.colorScheme.primary, width: 4),
+            //   ),
+            //   padding: const EdgeInsets.all(4),
+            //   child: ProfilePictureWidget(
+            //     photoProfilePictureWidget(
+            //     avatarUrl: userProfile['avatarUrl'],
+            //   ),
+            // ),
             Container(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
@@ -315,6 +331,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 onPressed: () => context.go('/admin/reports'),
               ),
             ],
+
+            // Show "Event Participants" for master and admins (rink owners)
+            if (isMaster || isAdmin) ...[
+              const SizedBox(height: 12),
+              JBButton(
+                label: "Event Participants",
+                onPressed: () {
+                  final user = FirebaseAuth.instance.currentUser;
+                  if (user == null) return;
+
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => EventParticipantsScreen(creatorId: user.uid),
+                    ),
+                  );
+                },
+              ),
+            ],
+
 
             const SizedBox(height: 32),
           ],

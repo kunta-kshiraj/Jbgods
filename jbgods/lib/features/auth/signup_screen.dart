@@ -306,6 +306,13 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                 key: formKey,
                 child: Column(
                   children: [
+                    // Center(
+                    //   child: ProfilePictureWidget(
+                    //     allowEdit: true,
+                    //     radius: 55,
+                    //   ),
+                    // ),
+                    // SizedBox(height: 12),
                     JBInput(
                       controller: usernameCtrl, 
                       label: "Username",

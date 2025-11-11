@@ -10,6 +10,8 @@ import 'features/auth/verify_email_screen.dart';
 import 'features/auth/forgot_password_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/chat/chat_screen.dart';
+import 'features/events/events_page.dart';
+import 'features/rinks/rinks_screen.dart';
 import 'features/profile/profile_screen.dart';
 import 'features/profile/privacy_policy_screen.dart';
 import 'features/auth/terms_privacy_screen.dart';
@@ -71,8 +73,14 @@ class _MainShellWithNavigationState extends ConsumerState<_MainShellWithNavigati
       case '/shell/chat':
         _currentIndex = 1;
         break;
-      case '/shell/profile':
+      case '/shell/events':
         _currentIndex = 2;
+        break;
+      case '/shell/rinks':
+        _currentIndex = 3;
+        break;
+      case '/shell/profile':
+        _currentIndex = 4;
         break;
     }
   }
@@ -93,6 +101,12 @@ class _MainShellWithNavigationState extends ConsumerState<_MainShellWithNavigati
             context.go('/shell/chat');
             break;
           case 2:
+            context.go('/shell/events');
+            break;
+          case 3:
+            context.go('/shell/rinks');
+            break;
+          case 4:
             context.go('/shell/profile');
             break;
         }
@@ -100,6 +114,8 @@ class _MainShellWithNavigationState extends ConsumerState<_MainShellWithNavigati
       children: const [
         HomeScreen(),
         ChatScreen(),
+        EventsPage(),
+        RinksScreen(),
         ProfileScreen(),
       ],
     );
@@ -246,6 +262,14 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/shell/profile',
             builder: (ctx, _) => const ProfileScreen(),
+          ),
+          GoRoute(
+            path: '/shell/events',
+            builder: (ctx, _) => const EventsPage(),
+          ),
+          GoRoute(
+            path: '/shell/rinks',
+            builder: (ctx, _) => const RinksScreen(),
           ),
         ],
       ),

@@ -24,6 +24,8 @@ class TabScaffold extends StatelessWidget {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.event), label: 'Home'),
           BottomNavigationBarItem(icon: Icon(Icons.campaign), label: 'Chat'),
+          BottomNavigationBarItem(icon: Icon(Icons.calendar_today), label: 'Events'),
+          BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Rinks'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
         ],
       ),

@@ -8,6 +8,19 @@ import 'theme.dart';
 import 'router.dart';
 import 'app_state.dart';
 
+// Future<void> renameCollection() async {
+//   final firestore = FirebaseFirestore.instance;
+//   final oldCollection = firestore.collection('events');
+//   final newCollection = firestore.collection('updates');
+
+//   final snapshot = await oldCollection.get();
+//   for (var doc in snapshot.docs) {
+//     await newCollection.doc(doc.id).set(doc.data());
+//   }
+//   print('✅ Copied ${snapshot.docs.length} documents from events → updates');
+// }
+
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
@@ -15,6 +28,10 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  print("✅ Connected to Firebase project: ${Firebase.app().options.projectId}");
+  // await renameCollection();
+
   
   // Setup emulators if enabled
   const useEmulator = bool.fromEnvironment('USE_EMULATOR', defaultValue: false);
