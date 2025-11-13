@@ -18,6 +18,8 @@ import 'features/auth/terms_privacy_screen.dart';
 import 'features/admin/requests_screen.dart';
 import 'features/admin/reports_screen.dart';
 import 'features/community/community_screen.dart';
+import 'features/auth/signup_choice_screen.dart';
+import 'features/auth/signup_owner_screen.dart';
 import 'widgets/tab_scaffold.dart';
 
 class AuthStateNotifier extends ChangeNotifier {
@@ -40,12 +42,12 @@ class MainShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final userRole = ref.watch(userRoleProvider);
     
-    // First-time users ONLY see the profile page - no navigation
-    if (userRole == 'first_time') {
+    // First-time users and first-time owners ONLY see the profile page - no navigation
+    if (userRole == 'first_time' || userRole == 'first_time_owner') {
       return const ProfileScreen();
     }
     
-    // Members and admins get the full navigation
+    // Members, admins, and approved owners get the full navigation
     return _MainShellWithNavigation(child: child);
   }
 }
@@ -154,16 +156,16 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (path == '/' || path == '/login' || path == '/signup' || path == '/verify-email') {
         // Use userRoleProvider which has a fallback
         final role = ref.read(userRoleProvider);
-        if (role == 'first_time') {
-          return '/shell/profile'; // First-time users only see profile
+        if (role == 'first_time' || role == 'first_time_owner') {
+          return '/shell/profile'; // First-time users and owners only see profile
         }
-        return '/shell/home'; // Members and admins go to home
+        return '/shell/home'; // Members, admins, and approved owners go to home
       }
 
-      // 4) First-time users can only access profile page (allow Privacy Policy)
+      // 4) First-time users and first-time owners can only access profile page (allow Privacy Policy)
       final role = ref.read(userRoleProvider);
-      if (role == 'first_time' && !(path.startsWith('/shell/profile') || path == '/privacy-policy' || path == '/terms-privacy')) {
-        return '/shell/profile'; // Redirect first-time users to profile
+      if ((role == 'first_time' || role == 'first_time_owner') && !(path.startsWith('/shell/profile') || path == '/privacy-policy' || path == '/terms-privacy')) {
+        return '/shell/profile'; // Redirect first-time users and owners to profile
       }
 
       return null;
@@ -180,6 +182,18 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/signup',
         builder: (ctx, _) => const SignUpScreen(),
+      ),
+      GoRoute(
+        path: '/signup-choice',
+        builder: (ctx, _) => const SignupChoiceScreen(),
+      ),
+      GoRoute(
+        path: '/signup/member',
+        builder: (ctx, _) => const SignUpScreen(),
+      ),
+      GoRoute(
+        path: '/signup/owner',
+        builder: (ctx, _) => const SignUpOwnerScreen(),
       ),
       GoRoute(
         path: '/verify-email',

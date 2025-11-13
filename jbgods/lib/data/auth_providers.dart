@@ -75,10 +75,10 @@ final userProfileProvider = Provider<Map<String, dynamic>?>((ref) {
   );
 });
 
-/// Is admin (admin or master)
+/// Is admin (admin, master, or owner)
 final isAdminProvider = Provider<bool>((ref) {
   final role = ref.watch(userRoleProvider);
-  return role == 'admin' || role == 'master';
+  return role == 'admin' || role == 'master' || role == 'owner';
 });
 
 /// Is member (anything except first_time)
@@ -99,13 +99,25 @@ final pendingRequestProvider =
   return firestore.collection('requests').doc(user.uid).snapshots();
 });
 
+/// Current user's pending owner request doc (owner_requests/{uid})
+final pendingOwnerRequestProvider =
+    StreamProvider<DocumentSnapshot<Map<String, dynamic>>?>((ref) {
+  final user = ref.watch(currentUserProvider);
+  final firestore = ref.watch(firestoreProvider);
 
-// Count of admins + members (NOT first_time, NOT master)
+  if (user == null) {
+    return const Stream<DocumentSnapshot<Map<String, dynamic>>?>.empty();
+  }
+  return firestore.collection('owner_requests').doc(user.uid).snapshots();
+});
+
+
+// Count of admins + members + owners (NOT first_time, NOT master)
 final communityCountProvider = StreamProvider<int>((ref) {
   final fs = ref.watch(firestoreProvider);
   return fs
       .collection('users')
-      .where('role', whereIn: ['admin', 'member'])
+      .where('role', whereIn: ['admin', 'member', 'owner'])
       .snapshots()
       .map((s) => s.size);
 });
@@ -140,6 +152,22 @@ final membersStreamProvider =
   return fs
       .collection('users')
       .where('role', isEqualTo: 'member')
+      .snapshots();
+});
+
+final ownersStreamProvider =
+    StreamProvider<QuerySnapshot<Map<String, dynamic>>>((ref) {
+  final fs = ref.watch(firestoreProvider);
+  final userRole = ref.watch(userRoleProvider);
+  
+  // Only query if user is master
+  if (userRole != 'master') {
+    return const Stream<QuerySnapshot<Map<String, dynamic>>>.empty();
+  }
+  
+  return fs
+      .collection('users')
+      .where('role', isEqualTo: 'owner')
       .snapshots();
 });
 

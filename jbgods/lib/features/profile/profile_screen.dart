@@ -12,6 +12,7 @@ import '../../data/firestore_streams.dart';
 import '../../utils/date_utils.dart';
 import '../../widgets/profile_picture_widget.dart';
 import 'burger_menu.dart';
+import 'edit_profile_sheet.dart';
 import '../events/participants_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -50,6 +51,106 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     } finally {
       if (mounted) setState(() => _isRequesting = false);
     }
+  }
+
+  Future<void> _requestOwnerApproval() async {
+    setState(() => _isRequesting = true);
+    try {
+      final user = ref.read(currentUserProvider);
+      if (user == null) return;
+      final firestore = ref.read(firestoreProvider);
+
+      // Get owner data from users collection (stored during signup)
+      final doc = await firestore.collection('users').doc(user.uid).get();
+      final data = doc.data();
+
+      // Also check owner_requests collection for existing data
+      final ownerRequestDoc = await firestore.collection('owner_requests').doc(user.uid).get();
+      final ownerRequestData = ownerRequestDoc.data();
+
+      await firestore.collection('owner_requests').doc(user.uid).set({
+        'rinkName': data?['rinkName'] ?? ownerRequestData?['rinkName'] ?? '',
+        'address': data?['address'] ?? ownerRequestData?['address'] ?? '',
+        'ownerName': data?['ownerName'] ?? ownerRequestData?['ownerName'] ?? '',
+        'email': data?['email'] ?? user.email ?? '',
+        'latitude': data?['latitude'] ?? ownerRequestData?['latitude'],
+        'longitude': data?['longitude'] ?? ownerRequestData?['longitude'],
+        'status': 'pending',
+        'requestedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      if (mounted) {
+        showJBToast(context, "Request sent to master admin!");
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to send request: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isRequesting = false);
+    }
+  }
+
+  Widget _buildOwnerRequestButton(
+    Map<String, dynamic> userProfile,
+    AsyncValue<DocumentSnapshot<Map<String, dynamic>>?> hasPendingRequest,
+  ) {
+    if (_isRequesting) {
+      return Container(
+        decoration: BoxDecoration(
+          color: Colors.orange.withOpacity(0.10),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.orange, width: 1),
+        ),
+        child: const JBButton(label: "Sending Request...", onPressed: null, outline: true),
+      );
+    }
+
+    return hasPendingRequest.when(
+      data: (requestDoc) {
+        final status = requestDoc?.data()?['status'];
+        final isPending = requestDoc?.exists == true && status == 'pending';
+        final isRejected = requestDoc?.exists == true && status == 'rejected';
+
+        if (isPending) {
+          return Container(
+            decoration: BoxDecoration(
+              color: Colors.amber.withOpacity(0.25),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.amber, width: 1),
+            ),
+            child: const JBButton(label: "Pending Owner Request", onPressed: null, outline: true),
+          );
+        }
+
+        if (isRejected) {
+          return Container(
+            decoration: BoxDecoration(
+              color: Colors.red.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.red, width: 1),
+            ),
+            child: JBButton(
+              label: "Request Rejected - Try Again",
+              onPressed: _requestOwnerApproval,
+              outline: true,
+            ),
+          );
+        }
+
+        return JBButton(
+          label: "Request to List Skating Rink",
+          onPressed: _requestOwnerApproval,
+        );
+      },
+      loading: () => const SizedBox(height: 44, child: Center(child: CircularProgressIndicator())),
+      error: (_, __) => JBButton(
+        label: "Request to List Skating Rink",
+        onPressed: _requestOwnerApproval,
+      ),
+    );
   }
 
   Future<void> _logout() async {
@@ -150,13 +251,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final userProfile = ref.watch(userProfileProvider);
-    final userRole = ref.watch(userRoleProvider); // 'first_time' | 'member' | 'admin' | 'master'
+    final userRole = ref.watch(userRoleProvider); // 'first_time' | 'member' | 'admin' | 'master' | 'owner'
     final isAdmin = ref.watch(isAdminProvider);
     final isMaster = userRole == 'master';
+    final isOwner = userRole == 'owner';
     final theme = Theme.of(context);
 
-    // Pending request stream
+    // Pending request streams
     final hasPendingRequest = ref.watch(pendingRequestProvider);
+    final hasPendingOwnerRequest = ref.watch(pendingOwnerRequestProvider);
 
     // Community count label (only compute/watch for master to avoid rule errors)
     String communityLabel = '';
@@ -256,16 +359,35 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               child: CircleAvatar(
                 radius: 44,
                 backgroundColor: theme.scaffoldBackgroundColor,
-                backgroundImage: NetworkImage(userProfile['avatarUrl'] ?? ''),
-                child: (userProfile['avatarUrl'] ?? '').isEmpty
+                backgroundImage: (userProfile['avatarUrl'] != null && 
+                                 (userProfile['avatarUrl'] as String).isNotEmpty)
+                    ? NetworkImage(userProfile['avatarUrl'] as String)
+                    : null,
+                child: (userProfile['avatarUrl'] == null || 
+                       (userProfile['avatarUrl'] as String).isEmpty)
                     ? const Text("JB GODS", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold))
                     : null,
               ),
             ),
             const SizedBox(height: 20),
-            Text("Username: ${userProfile['username']}", style: theme.textTheme.bodyMedium?.copyWith(fontSize: 18)),
+            Text("Username: ${userProfile['username'] ?? 'N/A'}", style: theme.textTheme.bodyMedium?.copyWith(fontSize: 18)),
             const SizedBox(height: 6),
-            Text("Email: ${userProfile['email']}", style: theme.textTheme.bodyMedium),
+            Text("Email: ${userProfile['email'] ?? 'N/A'}", style: theme.textTheme.bodyMedium),
+            // Show owner-specific details
+            if (userRole == 'first_time_owner' || userRole == 'owner') ...[
+              if (userProfile['rinkName'] != null) ...[
+                const SizedBox(height: 6),
+                Text("Rink Name: ${userProfile['rinkName']}", style: theme.textTheme.bodyMedium),
+              ],
+              if (userProfile['address'] != null) ...[
+                const SizedBox(height: 6),
+                Text("Address: ${userProfile['address']}", style: theme.textTheme.bodyMedium),
+              ],
+              if (userProfile['ownerName'] != null) ...[
+                const SizedBox(height: 6),
+                Text("Owner Name: ${userProfile['ownerName']}", style: theme.textTheme.bodyMedium),
+              ],
+            ],
             const SizedBox(height: 6),
             Text(
               "Role: ${userRole.toUpperCase()}",
@@ -311,7 +433,47 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ],
                 ),
               ),
-            ] else if (isAdmin) ...[
+            ],
+            
+            // First-time owners see the request button
+            if (userRole == 'first_time_owner') ...[
+              _buildOwnerRequestButton(userProfile, hasPendingOwnerRequest),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: theme.colorScheme.primary.withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      color: theme.colorScheme.primary,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        "Request approval from master admin to list your skating rink and get full access",
+                        style: TextStyle(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.w500,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
+            // Only admins/master can access Admin Requests (NOT owners)
+            if (isAdmin && !isOwner) ...[
               JBButton(
                 label: "Admin Requests",
                 onPressed: () => context.go('/admin/requests'),

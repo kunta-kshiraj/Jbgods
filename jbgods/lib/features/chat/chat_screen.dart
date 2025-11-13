@@ -125,7 +125,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }) async {
     final me = ref.read(currentUserProvider);
     final userRole = ref.read(userRoleProvider);
-    final isAdmin = userRole == 'admin' || userRole == 'master';
+    final isAdmin = ref.read(isAdminProvider);
     final isMaster = userRole == 'master';
     final isOwnMessage = me?.uid == authorId;
     final blockedSet = ref.read(blockedUsersSetProvider).maybeWhen(data: (s) => s, orElse: () => <String>{});
@@ -287,9 +287,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final isAdmin = ref.watch(isAdminProvider);
 
     return Scaffold(
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Column(
+      resizeToAvoidBottomInset: true,
+      body: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 24,
+            right: 24,
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: Column(
           children: [
             const HeaderLogo(),
             const SizedBox(height: 8),
@@ -420,6 +426,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ),
             const SizedBox(height: 16),
           ],
+        ),
         ),
       ),
     );

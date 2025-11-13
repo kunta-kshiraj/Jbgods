@@ -51,7 +51,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final roleAsync = ref.read(currentUserRoleProvider);
       if (roleAsync.hasValue) {
         final role = roleAsync.value ?? 'first_time';
-        if (role == 'first_time') {
+        if (role == 'first_time' || role == 'first_time_owner') {
           if (mounted) context.go('/shell/profile');
         } else {
           if (mounted) context.go('/shell/home');
@@ -61,7 +61,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         await Future.delayed(const Duration(milliseconds: 1000));
         final role = ref.read(userRoleProvider);
         if (mounted) {
-          if (role == 'first_time') {
+          if (role == 'first_time' || role == 'first_time_owner') {
             context.go('/shell/profile');
           } else {
             context.go('/shell/home');
@@ -172,7 +172,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         MouseRegion(
                           cursor: SystemMouseCursors.click,
                           child: GestureDetector(
-                            onTap: () => context.go('/signup'),
+                            onTap: () => context.go('/signup-choice'),
                             child: Text(
                               "Click here to sign up",
                               style: theme.textTheme.bodyMedium?.copyWith(

@@ -4,6 +4,8 @@ import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'enroll_screen.dart';
+import '../../widgets/jb_input.dart';
+import '../../widgets/jb_button.dart';
 
 class EventsPage extends StatefulWidget {
   const EventsPage({super.key});
@@ -33,7 +35,7 @@ class _EventsPageState extends State<EventsPage> {
         await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
     final role = doc.data()?['role'] ?? 'first_time';
     setState(() {
-      _isAdminOrMaster = role == 'admin' || role == 'master';
+      _isAdminOrMaster = role == 'admin' || role == 'master' || role == 'owner';
     });
   }
 
@@ -79,12 +81,13 @@ class _EventsPageState extends State<EventsPage> {
   Widget build(BuildContext context) {
     final eventsToday = _getEventsForDay(_selectedDay ?? _focusedDay);
 
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    
     return Scaffold(
       appBar: AppBar(
         title: const Text("Events Calendar"),
         centerTitle: true,
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
         elevation: 1,
       ),
       body: Column(
@@ -110,20 +113,60 @@ class _EventsPageState extends State<EventsPage> {
                 color: Colors.red.shade600,
                 shape: BoxShape.circle,
               ),
-              markerDecoration: const BoxDecoration(
-                color: Colors.black,
+              markerDecoration: BoxDecoration(
+                color: isDark ? Colors.white : Colors.black,
                 shape: BoxShape.circle,
               ),
+              defaultTextStyle: TextStyle(
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+              weekendTextStyle: TextStyle(
+                color: isDark ? Colors.white70 : Colors.black54,
+              ),
+              outsideTextStyle: TextStyle(
+                color: isDark ? Colors.white38 : Colors.black26,
+              ),
+              disabledTextStyle: TextStyle(
+                color: isDark ? Colors.white24 : Colors.black12,
+              ),
             ),
-            headerStyle: const HeaderStyle(
+            headerStyle: HeaderStyle(
               formatButtonVisible: false,
               titleCentered: true,
+              titleTextStyle: TextStyle(
+                color: isDark ? Colors.white : Colors.black87,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+              leftChevronIcon: Icon(
+                Icons.chevron_left,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+              rightChevronIcon: Icon(
+                Icons.chevron_right,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+            ),
+            daysOfWeekStyle: DaysOfWeekStyle(
+              weekdayStyle: TextStyle(
+                color: isDark ? Colors.white70 : Colors.black87,
+              ),
+              weekendStyle: TextStyle(
+                color: isDark ? Colors.white70 : Colors.black87,
+              ),
             ),
           ),
-          const Divider(),
+          Divider(color: isDark ? Colors.white24 : Colors.black12),
           Expanded(
             child: eventsToday.isEmpty
-                ? const Center(child: Text("No events for this day"))
+                ? Center(
+                    child: Text(
+                      "No events for this day",
+                      style: TextStyle(
+                        color: isDark ? Colors.white70 : Colors.black54,
+                      ),
+                    ),
+                  )
                 : ListView.builder(
                     itemCount: eventsToday.length,
                     itemBuilder: (context, index) {
@@ -145,114 +188,191 @@ class _EventsPageState extends State<EventsPage> {
   }
 
   Widget _buildEventCard(BuildContext context, Map<String, dynamic> e) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final base = theme.colorScheme.primary;
+    
+    // Match home page card colors - increase opacity in dark theme for better visibility
+    final headColor = isDark 
+        ? base.withValues(alpha: 0.30) 
+        : base.withValues(alpha: 0.20);
+    final bodyColor = isDark 
+        ? base.withValues(alpha: 0.22) 
+        : base.withValues(alpha: 0.12);
+    final footColor = isDark 
+        ? base.withValues(alpha: 0.18) 
+        : base.withValues(alpha: 0.10);
+    
+    // Use full white in dark theme for better contrast
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final iconColor = isDark ? Colors.white : Colors.black87;
+    
     return GestureDetector(
       onLongPress: _isAdminOrMaster
           ? () => _showEventActions(context, e)
           : null,
-      child: Card(
+      child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        elevation: 2,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.12),
+              blurRadius: 10,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header: Title with actions
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                color: headColor,
+              ),
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(e['title'] ?? '',
-                      style: const TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.bold)),
+                  Expanded(
+                    child: Text(
+                      e['title'] ?? 'Untitled Event',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: textColor,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
                   if (_isAdminOrMaster)
                     IconButton(
-                      icon: const Icon(Icons.more_vert),
+                      icon: Icon(Icons.more_vert, color: textColor),
                       onPressed: () => _showEventActions(context, e),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
                     ),
                 ],
               ),
-              const SizedBox(height: 6),
-              Row(
+            ),
+            // Body: Event details
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              color: bodyColor,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.calendar_today, size: 16),
-                  const SizedBox(width: 6),
-                  Text(
-                    DateFormat('EEEE, MMM d, yyyy')
-                        .format((e['date'] as Timestamp).toDate()),
-                  ),
+                  if (e['date'] != null) ...[
+                    Row(
+                      children: [
+                        Icon(Icons.calendar_today, size: 16, color: iconColor),
+                        const SizedBox(width: 6),
+                        Text(
+                          DateFormat('EEEE, MMM d, yyyy')
+                              .format((e['date'] as Timestamp).toDate()),
+                          style: TextStyle(color: textColor),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                  ],
+                  if (e['time'] != null && (e['time'] as String).isNotEmpty) ...[
+                    Row(
+                      children: [
+                        Icon(Icons.access_time, size: 16, color: iconColor),
+                        const SizedBox(width: 6),
+                        Text(
+                          e['time'] ?? '',
+                          style: TextStyle(color: textColor),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                  ],
+                  if (e['location'] != null && (e['location'] as String).isNotEmpty) ...[
+                    Row(
+                      children: [
+                        Icon(Icons.place, size: 16, color: iconColor),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            e['location'] ?? '',
+                            style: TextStyle(color: textColor),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                  ],
+                  if (e['description'] != null && (e['description'] as String).isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      e['description'] ?? '',
+                      style: TextStyle(
+                        color: isDark ? Colors.white : textColor.withOpacity(0.8), 
+                        height: 1.26,
+                      ),
+                    ),
+                  ],
                 ],
               ),
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  const Icon(Icons.access_time, size: 16),
-                  const SizedBox(width: 6),
-                  Text(e['time'] ?? ''),
-                ],
+            ),
+            // Footer: Enrollment button
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
+                color: footColor,
               ),
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  const Icon(Icons.place, size: 16),
-                  const SizedBox(width: 6),
-                  Expanded(child: Text(e['location'] ?? '')),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                e['description'] ?? '',
-                style: const TextStyle(color: Colors.black54),
-              ),
-              const SizedBox(height: 12),
-              if (!_isAdminOrMaster)
-                FutureBuilder<bool>(
-                    future: _isUserEnrolled(e['id']),
-                    builder: (context, snapshot) {
-                    final enrolled = snapshot.data ?? false;
+              child: !_isAdminOrMaster
+                  ? FutureBuilder<bool>(
+                      future: _isUserEnrolled(e['id']),
+                      builder: (context, snapshot) {
+                        final enrolled = snapshot.data ?? false;
 
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const SizedBox(
-                        height: 48,
-                        child: Center(child: CircularProgressIndicator()),
-                        );
-                    }
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const SizedBox(
+                            height: 48,
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        }
 
-                    if (enrolled) {
+                        if (enrolled) {
+                          return ElevatedButton(
+                            onPressed: null,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.grey,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            child: const Text("Enrolled"),
+                          );
+                        }
+
                         return ElevatedButton(
-                        onPressed: null,
-                        style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.grey,
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => EnrollScreen(event: e),
+                              ),
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
                             shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(8),
                             ),
-                        ),
-                        child: const Text("Enrolled"),
+                          ),
+                          child: const Text("Click to Enroll"),
                         );
-                    }
-
-                    return ElevatedButton(
-                        onPressed: () {
-                        Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                            builder: (_) => EnrollScreen(event: e),
-                            ),
-                        );
-                        },
-                        style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                        ),
-                        ),
-                        child: const Text("Click to Enroll"),
-                    );
-                    },
-                ),
-
-
-            ],
-          ),
+                      },
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ],
         ),
       ),
     );
@@ -321,9 +441,12 @@ class _EventsPageState extends State<EventsPage> {
         ? _parseTime(event['time'])
         : null;
 
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     showModalBottomSheet(
         isScrollControlled: true,
-        backgroundColor: Colors.white,
+        backgroundColor: isDark ? theme.colorScheme.surface : Colors.white,
         shape: const RoundedRectangleBorder(
             borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
@@ -338,151 +461,229 @@ class _EventsPageState extends State<EventsPage> {
                 return SingleChildScrollView(
                 controller: scrollController,
                 padding: EdgeInsets.only(
-                    left: 16,
-                    right: 16,
+                    left: 24,
+                    right: 24,
                     top: 20,
                     bottom: MediaQuery.of(context).viewInsets.bottom + 20,
                 ),
                 child: StatefulBuilder(
                     builder: (context, setState) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                        TextField(
+                        // Drag handle
+                        Center(
+                          child: Container(
+                            width: 40,
+                            height: 4,
+                            margin: const EdgeInsets.only(bottom: 20),
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.white24 : Colors.grey[300],
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                        ),
+                        // Title
+                        Text(
+                          event == null ? 'Create Event' : 'Edit Event',
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        JBInput(
                             controller: titleCtrl,
-                            decoration:
-                                const InputDecoration(labelText: 'Event Name')),
-                        TextField(
+                            label: 'Event Name',
+                        ),
+                        const SizedBox(height: 16),
+                        JBInput(
                             controller: descCtrl,
-                            decoration:
-                                const InputDecoration(labelText: 'Description')),
-                        TextField(
+                            label: 'Description',
+                        ),
+                        const SizedBox(height: 16),
+                        JBInput(
                             controller: costCtrl,
-                            decoration: const InputDecoration(labelText: 'Cost')),
-                        TextField(
+                            label: 'Cost',
+                            keyboardType: TextInputType.number,
+                        ),
+                        const SizedBox(height: 16),
+                        JBInput(
                             controller: locCtrl,
-                            decoration: const InputDecoration(labelText: 'Location')),
-                        const SizedBox(height: 10),
-                        Row(
-                        children: [
-                            Expanded(
-                            child: Text(
-                                selectedDate == null
-                                    ? 'Pick Date'
-                                    : DateFormat.yMMMd().format(selectedDate!),
-                                style: TextStyle(
-                                color: selectedDate == null
-                                    ? Colors.grey
-                                    : Colors.black,
-                                ),
-                            ),
-                            ),
-                            TextButton(
-                            onPressed: () async {
-                                final picked = await showDatePicker(
-                                context: context,
-                                initialDate: selectedDate ?? DateTime.now(),
-                                firstDate: DateTime(2020),
-                                lastDate: DateTime(2030),
-                                );
-                                if (picked != null) setState(() => selectedDate = picked);
-                            },
-                            child: const Text('Select'),
-                            ),
-                        ],
+                            label: 'Location',
                         ),
-                        Row(
-                        children: [
-                            Expanded(
-                            child: Text(
-                                selectedTime == null
-                                    ? 'Pick Time'
-                                    : selectedTime!.format(context),
-                                style: TextStyle(
-                                color: selectedTime == null
-                                    ? Colors.grey
-                                    : Colors.black,
+                        const SizedBox(height: 16),
+                        // Date Picker
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: isDark ? Colors.white24 : Colors.grey[300]!,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.calendar_today,
+                                size: 20,
+                                color: isDark ? Colors.white70 : Colors.black54,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  selectedDate == null
+                                      ? 'Pick Date'
+                                      : DateFormat.yMMMd().format(selectedDate!),
+                                  style: TextStyle(
+                                    color: selectedDate == null
+                                        ? (isDark ? Colors.white54 : Colors.grey)
+                                        : (isDark ? Colors.white : Colors.black87),
+                                  ),
                                 ),
-                            ),
-                            ),
-                            TextButton(
-                            onPressed: () async {
-                                final time = await showTimePicker(
-                                context: context,
-                                initialTime: TimeOfDay.now(),
-                                );
-                                if (time != null) setState(() => selectedTime = time);
-                            },
-                            child: const Text('Select'),
-                            ),
-                        ],
+                              ),
+                              TextButton(
+                                onPressed: () async {
+                                  final picked = await showDatePicker(
+                                    context: context,
+                                    initialDate: selectedDate ?? DateTime.now(),
+                                    firstDate: DateTime(2020),
+                                    lastDate: DateTime(2030),
+                                  );
+                                  if (picked != null) setState(() => selectedDate = picked);
+                                },
+                                child: Text(
+                                  'Select',
+                                  style: TextStyle(
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                        const SizedBox(height: 20),
-                        ElevatedButton(
-                        onPressed: () async {
-                            if (titleCtrl.text.trim().isEmpty ||
-                                locCtrl.text.trim().isEmpty ||
-                                costCtrl.text.trim().isEmpty ||
-                                selectedDate == null ||
-                                selectedTime == null) {
-                            showDialog(
-                                context: context,
-                                builder: (_) => AlertDialog(
-                                title: const Text('Missing Details'),
-                                content: const Text(
-                                    'Please fill in all required fields: Event Name, Location, Cost, Date, and Time.'),
-                                actions: [
-                                    TextButton(
-                                    onPressed: () => Navigator.pop(context),
-                                    child: const Text('OK'),
+                        const SizedBox(height: 16),
+                        // Time Picker
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: isDark ? Colors.white24 : Colors.grey[300]!,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.access_time,
+                                size: 20,
+                                color: isDark ? Colors.white70 : Colors.black54,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  selectedTime == null
+                                      ? 'Pick Time'
+                                      : selectedTime!.format(context),
+                                  style: TextStyle(
+                                    color: selectedTime == null
+                                        ? (isDark ? Colors.white54 : Colors.grey)
+                                        : (isDark ? Colors.white : Colors.black87),
+                                  ),
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: () async {
+                                  final time = await showTimePicker(
+                                    context: context,
+                                    initialTime: TimeOfDay.now(),
+                                  );
+                                  if (time != null) setState(() => selectedTime = time);
+                                },
+                                child: Text(
+                                  'Select',
+                                  style: TextStyle(
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        SizedBox(
+                          width: double.infinity,
+                          child: JBButton(
+                            label: event == null ? 'Create Event' : 'Save Changes',
+                            onPressed: () async {
+                              if (titleCtrl.text.trim().isEmpty ||
+                                  locCtrl.text.trim().isEmpty ||
+                                  costCtrl.text.trim().isEmpty ||
+                                  selectedDate == null ||
+                                  selectedTime == null) {
+                                showDialog(
+                                    context: context,
+                                    builder: (_) => AlertDialog(
+                                    title: Text(
+                                      'Missing Details',
+                                      style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                                     ),
-                                ],
-                                ),
-                            );
-                            return;
-                            }
-
-                            final user = FirebaseAuth.instance.currentUser;
-                            final data = {
-                            'title': titleCtrl.text.trim(),
-                            'description': descCtrl.text.trim(),
-                            'cost': double.tryParse(costCtrl.text) ?? 0.0,
-                            'location': locCtrl.text.trim(),
-                            'date': Timestamp.fromDate(selectedDate!),
-                            'time': selectedTime!.format(context),
-                            'updatedAt': FieldValue.serverTimestamp(),
-                            'createdBy': user?.uid,
-                            };
-
-                            final col =
-                                FirebaseFirestore.instance.collection('events');
-
-                            try {
-                            if (event == null) {
-                                data['createdAt'] = FieldValue.serverTimestamp();
-                                await col.add(data);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('✅ Event created')),
+                                    content: Text(
+                                        'Please fill in all required fields: Event Name, Location, Cost, Date, and Time.',
+                                        style: TextStyle(color: isDark ? Colors.white70 : Colors.black87),
+                                    ),
+                                    backgroundColor: isDark ? theme.colorScheme.surface : Colors.white,
+                                    actions: [
+                                        TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        child: Text(
+                                          'OK',
+                                          style: TextStyle(color: theme.colorScheme.primary),
+                                        ),
+                                        ),
+                                    ],
+                                    ),
                                 );
-                            } else {
-                                await col.doc(event['id']).update(data);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('✅ Event updated')),
-                                );
-                            }
+                                return;
+                              }
 
-                            if (mounted) Navigator.pop(context);
-                            await _loadEvents();
-                            } catch (err) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('❌ Error saving: $err')),
-                            );
-                            }
-                        },
-                        style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red,
-                            minimumSize: const Size(double.infinity, 48),
-                        ),
-                        child:
-                            Text(event == null ? 'Create Event' : 'Save Changes'),
+                              final user = FirebaseAuth.instance.currentUser;
+                              final data = {
+                              'title': titleCtrl.text.trim(),
+                              'description': descCtrl.text.trim(),
+                              'cost': double.tryParse(costCtrl.text) ?? 0.0,
+                              'location': locCtrl.text.trim(),
+                              'date': Timestamp.fromDate(selectedDate!),
+                              'time': selectedTime!.format(context),
+                              'updatedAt': FieldValue.serverTimestamp(),
+                              'createdBy': user?.uid,
+                              };
+
+                              final col =
+                                  FirebaseFirestore.instance.collection('events');
+
+                              try {
+                              if (event == null) {
+                                  data['createdAt'] = FieldValue.serverTimestamp();
+                                  await col.add(data);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('✅ Event created')),
+                                  );
+                              } else {
+                                  await col.doc(event['id']).update(data);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('✅ Event updated')),
+                                  );
+                              }
+
+                              if (mounted) Navigator.pop(context);
+                              await _loadEvents();
+                              } catch (err) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('❌ Error saving: $err')),
+                              );
+                              }
+                            },
+                          ),
                         ),
                     ],
                     ),

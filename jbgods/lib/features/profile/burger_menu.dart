@@ -106,6 +106,9 @@ class BurgerMenuSheet extends ConsumerWidget {
                 await firestore.collection('users').doc(user.uid).delete().catchError((_) {});
                 await firestore.collection('requests').doc(user.uid).delete().catchError((_) {});
                 
+                // Delete owner_request if exists (but NOT rink - only master can delete rinks)
+                await firestore.collection('owner_requests').doc(user.uid).delete().catchError((_) {});
+                
                 // Delete user's chat messages
                 final messagesQuery = await firestore
                     .collection('messages')
@@ -150,6 +153,9 @@ class BurgerMenuSheet extends ConsumerWidget {
                         // Retry deletion after successful reauth
                         await firestore.collection('users').doc(user.uid).delete().catchError((_) {});
                         await firestore.collection('requests').doc(user.uid).delete().catchError((_) {});
+                        
+                        // Delete owner_request if exists (but NOT rink - only master can delete rinks)
+                        await firestore.collection('owner_requests').doc(user.uid).delete().catchError((_) {});
                         
                         // Delete user's chat messages
                         final messagesQuery = await firestore
