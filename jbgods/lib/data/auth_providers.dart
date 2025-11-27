@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 /// Firebase instances
 final firebaseAuthProvider =
@@ -8,6 +9,9 @@ final firebaseAuthProvider =
 
 final firestoreProvider =
     Provider<FirebaseFirestore>((ref) => FirebaseFirestore.instance);
+
+final firebaseFunctionsProvider =
+    Provider<FirebaseFunctions>((ref) => FirebaseFunctions.instance);
 
 /// Auth state stream (null when signed out)
 final authStateChangesProvider = StreamProvider<User?>((ref) {
@@ -170,4 +174,20 @@ final ownersStreamProvider =
       .where('role', isEqualTo: 'owner')
       .snapshots();
 });
+
+/// Check if user has Rose Awards subscription
+final roseAwardsSubscriptionProvider =
+    StreamProvider<DocumentSnapshot<Map<String, dynamic>>?>((ref) {
+  final user = ref.watch(currentUserProvider);
+  final firestore = ref.watch(firestoreProvider);
+
+  if (user == null) {
+    return const Stream<DocumentSnapshot<Map<String, dynamic>>?>.empty();
+  }
+  return firestore
+      .collection('rose_awards_subscriptions')
+      .doc(user.uid)
+      .snapshots();
+});
+
 

@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_stripe/flutter_stripe.dart';
 import 'firebase_options.dart';
 import 'theme.dart';
 import 'router.dart';
 import 'app_state.dart';
+import 'core/secret/stripe_keys.dart';
 
 // Future<void> renameCollection() async {
 //   final firestore = FirebaseFirestore.instance;
@@ -38,6 +40,16 @@ void main() async {
   if (useEmulator) {
     await FirebaseAuth.instance.useAuthEmulator('localhost', 9099);
     FirebaseFirestore.instance.useFirestoreEmulator('localhost', 8080);
+  }
+  
+  // Initialize Stripe with publishable key
+  Stripe.publishableKey = StripeKeys.publishableKey;
+  
+  // Warn if Stripe keys are not configured
+  if (StripeKeys.publishableKey == 'YOUR_PUBLISHABLE_KEY' || 
+      StripeKeys.secretKey == 'YOUR_SECRET_KEY') {
+    print('⚠️ WARNING: Stripe keys not configured!');
+    print('Please update lib/core/secret/stripe_keys.dart with your Stripe API keys.');
   }
   
   await AppStateNotifier.ensurePrefsInitialized();

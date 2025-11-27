@@ -3,18 +3,20 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'enroll_screen.dart';
 import '../../widgets/jb_input.dart';
 import '../../widgets/jb_button.dart';
+import '../../data/auth_providers.dart';
 
-class EventsPage extends StatefulWidget {
+class EventsPage extends ConsumerStatefulWidget {
   const EventsPage({super.key});
 
   @override
-  State<EventsPage> createState() => _EventsPageState();
+  ConsumerState<EventsPage> createState() => _EventsPageState();
 }
 
-class _EventsPageState extends State<EventsPage> {
+class _EventsPageState extends ConsumerState<EventsPage> {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
   List<Map<String, dynamic>> _events = [];
@@ -27,6 +29,8 @@ class _EventsPageState extends State<EventsPage> {
     _loadEvents();
   }
 
+  String _currentUserRole = 'first_time';
+  
   Future<void> _checkUserRole() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -35,6 +39,7 @@ class _EventsPageState extends State<EventsPage> {
         await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
     final role = doc.data()?['role'] ?? 'first_time';
     setState(() {
+      _currentUserRole = role;
       _isAdminOrMaster = role == 'admin' || role == 'master' || role == 'owner';
     });
   }
@@ -51,7 +56,48 @@ class _EventsPageState extends State<EventsPage> {
         .get();
 
     return query.docs.isNotEmpty;
+  }
+
+  /// Check if the three dots menu (edit/delete actions) should be shown
+  /// Returns true if: no registrations exist OR event date has passed
+  /// Returns false if: registrations exist AND event date hasn't passed
+  Future<bool> _canShowEventActions(String eventId, Timestamp? eventDate) async {
+    try {
+      // Check if there are any registrations
+      final registrationsSnapshot = await FirebaseFirestore.instance
+          .collection('registrations')
+          .where('eventId', isEqualTo: eventId)
+          .limit(1)
+          .get();
+      
+      final hasRegistrations = registrationsSnapshot.docs.isNotEmpty;
+      
+      // If no registrations, always allow actions
+      if (!hasRegistrations) {
+        return true;
+      }
+      
+      // If registrations exist, check if event date has passed
+      if (eventDate == null) {
+        // If event date is null and there are registrations, don't show actions
+        return false;
+      }
+      
+      final now = DateTime.now();
+      final eventDateTime = eventDate.toDate();
+      // Compare dates only (ignore time) - event date is considered passed if it's before today
+      final today = DateTime(now.year, now.month, now.day);
+      final eventDay = DateTime(eventDateTime.year, eventDateTime.month, eventDateTime.day);
+      
+      // Event date has passed if eventDay is before today (i.e., event was yesterday or earlier)
+      final eventDatePassed = eventDay.isBefore(today);
+      
+      return eventDatePassed;
+    } catch (e) {
+      // On error, default to showing actions (safer fallback)
+      return true;
     }
+  }
 
 
   Future<void> _loadEvents() async {
@@ -207,10 +253,29 @@ class _EventsPageState extends State<EventsPage> {
     final textColor = isDark ? Colors.white : Colors.black87;
     final iconColor = isDark ? Colors.white : Colors.black87;
     
-    return GestureDetector(
-      onLongPress: _isAdminOrMaster
-          ? () => _showEventActions(context, e)
-          : null,
+    // Check if current user is the creator or master
+    final currentUser = ref.read(currentUserProvider);
+    final userRole = ref.read(userRoleProvider);
+    final isMaster = userRole == 'master';
+    final eventCreatorId = e['createdBy'] as String?;
+    final isCreator = currentUser != null && eventCreatorId == currentUser.uid;
+    final canEditOrDelete = isCreator || isMaster;
+    
+    // Get event date and ID for checking registrations
+    final eventId = e['id'] as String;
+    final eventDate = e['date'] as Timestamp?;
+    
+    return FutureBuilder<bool>(
+      future: _canShowEventActions(eventId, eventDate),
+      builder: (context, actionsSnapshot) {
+        // While loading, don't show actions (safer default)
+        final canShowActions = actionsSnapshot.hasData ? (actionsSnapshot.data ?? false) : false;
+        final actionsAllowed = canEditOrDelete && canShowActions;
+        
+        return GestureDetector(
+          onLongPress: actionsAllowed
+              ? () => _showEventActions(context, e)
+              : null,
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
@@ -246,7 +311,8 @@ class _EventsPageState extends State<EventsPage> {
                       ),
                     ),
                   ),
-                  if (_isAdminOrMaster)
+                  // Show three dots only if user can edit/delete AND actions are allowed
+                  if (canEditOrDelete && actionsAllowed)
                     IconButton(
                       icon: Icon(Icons.more_vert, color: textColor),
                       onPressed: () => _showEventActions(context, e),
@@ -362,6 +428,7 @@ class _EventsPageState extends State<EventsPage> {
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -375,6 +442,8 @@ class _EventsPageState extends State<EventsPage> {
           ],
         ),
       ),
+        );
+      },
     );
   }
 
@@ -397,28 +466,103 @@ class _EventsPageState extends State<EventsPage> {
                 title: const Text('Delete'),
                 onTap: () async {
                 Navigator.pop(context);
+                
+                // Check if event can be deleted
                 try {
-                    await FirebaseFirestore.instance
-                        .collection('events')
-                        .doc(e['id'])
-                        .delete();
+                  final eventId = e['id'] as String;
+                  final eventDate = e['date'] as Timestamp?;
+                  
+                  // Check if there are any registrations
+                  final registrationsSnapshot = await FirebaseFirestore.instance
+                      .collection('registrations')
+                      .where('eventId', isEqualTo: eventId)
+                      .limit(1)
+                      .get();
+                  
+                  final hasRegistrations = registrationsSnapshot.docs.isNotEmpty;
+                  
+                  // Check if event date has passed
+                  final now = DateTime.now();
+                  final eventDateTime = eventDate?.toDate();
+                  final eventDatePassed = eventDateTime != null && eventDateTime.isBefore(now);
+                  
+                  // Cannot delete if there are registrations AND (event date is null OR event date hasn't passed)
+                  if (hasRegistrations) {
+                    if (eventDate == null) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('❌ Cannot delete event: Users have enrolled and event date is not set. Please set an event date first.'),
+                          backgroundColor: Colors.orange,
+                          duration: Duration(seconds: 4),
+                        ),
+                      );
+                      return;
+                    }
+                    
+                    if (!eventDatePassed) {
+                      if (!mounted) return;
+                      final eventDateStr = DateFormat('MMM d, yyyy').format(eventDateTime!);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('❌ Cannot delete event: Users have enrolled. Event can only be deleted after the event date ($eventDateStr) has passed.'),
+                          backgroundColor: Colors.orange,
+                          duration: const Duration(seconds: 4),
+                        ),
+                      );
+                      return;
+                    }
+                  }
+                  
+                  // Show confirmation dialog
+                  final confirmDelete = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Delete Event'),
+                      content: Text(
+                        hasRegistrations
+                            ? 'This event has enrolled participants. Are you sure you want to delete it? (Event date has passed)'
+                            : 'Are you sure you want to delete this event?',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text('Cancel'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          style: TextButton.styleFrom(foregroundColor: Colors.red),
+                          child: const Text('Delete'),
+                        ),
+                      ],
+                    ),
+                  );
+                  
+                  if (confirmDelete != true) return;
+                  
+                  // Delete the event
+                  await FirebaseFirestore.instance
+                      .collection('events')
+                      .doc(eventId)
+                      .delete();
 
-                    if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                        content: Text('✅ Event deleted successfully'),
-                        backgroundColor: Colors.redAccent,
+                      content: Text('✅ Event deleted successfully'),
+                      backgroundColor: Colors.redAccent,
                     ),
-                    );
+                  );
 
-                    await _loadEvents(); // refresh list
+                  await _loadEvents(); // refresh list
                 } catch (err) {
-                    ScaffoldMessenger.of(context).showSnackBar(
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                        content: Text('❌ Failed to delete event: $err'),
-                        backgroundColor: Colors.red,
+                      content: Text('❌ Failed to delete event: $err'),
+                      backgroundColor: Colors.red,
                     ),
-                    );
+                  );
                 }
                 },
             ),
@@ -494,11 +638,6 @@ class _EventsPageState extends State<EventsPage> {
                         JBInput(
                             controller: titleCtrl,
                             label: 'Event Name',
-                        ),
-                        const SizedBox(height: 16),
-                        JBInput(
-                            controller: descCtrl,
-                            label: 'Description',
                         ),
                         const SizedBox(height: 16),
                         JBInput(
@@ -609,6 +748,40 @@ class _EventsPageState extends State<EventsPage> {
                             ],
                           ),
                         ),
+                        const SizedBox(height: 16),
+                        // Description field (multiline, expandable)
+                        TextFormField(
+                          controller: descCtrl,
+                          maxLines: null, // Allows unlimited lines
+                          minLines: 3, // Starts with 3 lines
+                          keyboardType: TextInputType.multiline,
+                          style: TextStyle(
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                          decoration: InputDecoration(
+                            labelText: 'Description',
+                            alignLabelWithHint: true,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(
+                                color: theme.colorScheme.primary,
+                              ),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(
+                                color: isDark ? Colors.white24 : Colors.grey[300]!,
+                              ),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                          ),
+                        ),
                         const SizedBox(height: 24),
                         SizedBox(
                           width: double.infinity,
@@ -647,7 +820,7 @@ class _EventsPageState extends State<EventsPage> {
                               }
 
                               final user = FirebaseAuth.instance.currentUser;
-                              final data = {
+                              final data = <String, dynamic>{
                               'title': titleCtrl.text.trim(),
                               'description': descCtrl.text.trim(),
                               'cost': double.tryParse(costCtrl.text) ?? 0.0,
@@ -655,21 +828,63 @@ class _EventsPageState extends State<EventsPage> {
                               'date': Timestamp.fromDate(selectedDate!),
                               'time': selectedTime!.format(context),
                               'updatedAt': FieldValue.serverTimestamp(),
-                              'createdBy': user?.uid,
                               };
-
-                              final col =
-                                  FirebaseFirestore.instance.collection('events');
 
                               try {
                               if (event == null) {
+                                  // For new events, check if user is master
+                                  final isMaster = _currentUserRole == 'master';
+                                  
+                                  data['createdBy'] = user?.uid;
                                   data['createdAt'] = FieldValue.serverTimestamp();
-                                  await col.add(data);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('✅ Event created')),
-                                  );
+                                  
+                                  if (isMaster) {
+                                    // Master can create events directly
+                                    await FirebaseFirestore.instance
+                                        .collection('events')
+                                        .add(data);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('✅ Event created and published'),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+                                  } else {
+                                    // Admin/Owner: save as pending request
+                                    data['status'] = 'pending';
+                                    data['requestedAt'] = FieldValue.serverTimestamp();
+                                    
+                                    // Get creator name for display
+                                    final userDoc = await FirebaseFirestore.instance
+                                        .collection('users')
+                                        .doc(user?.uid)
+                                        .get();
+                                    final creatorName = userDoc.data()?['name'] ?? 
+                                                       userDoc.data()?['ownerName'] ?? 
+                                                       userDoc.data()?['username'] ?? 
+                                                       'Unknown';
+                                    final creatorRole = userDoc.data()?['role'] ?? 'unknown';
+                                    
+                                    data['creatorName'] = creatorName;
+                                    data['creatorRole'] = creatorRole;
+                                    
+                                    await FirebaseFirestore.instance
+                                        .collection('event_requests')
+                                        .add(data);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('✅ Event request submitted! Waiting for master approval.'),
+                                        backgroundColor: Colors.orange,
+                                        duration: Duration(seconds: 4),
+                                      ),
+                                    );
+                                  }
                               } else {
-                                  await col.doc(event['id']).update(data);
+                                  // For updates, don't modify createdBy (preserve original creator)
+                                  await FirebaseFirestore.instance
+                                      .collection('events')
+                                      .doc(event['id'])
+                                      .update(data);
                                   ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(content: Text('✅ Event updated')),
                                   );

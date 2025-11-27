@@ -11,11 +11,14 @@ import '../../data/auth_providers.dart';
 import '../../data/firestore_streams.dart';
 import '../../utils/date_utils.dart';
 import '../../widgets/profile_picture_widget.dart';
+import '../../services/stripe_service.dart';
 import 'burger_menu.dart';
 import 'edit_profile_sheet.dart';
 import '../events/participants_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+// Annual subscription expiration: 1 year (365 days)
+const Duration _SUBSCRIPTION_EXPIRATION_DURATION = Duration(days: 365);
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -26,6 +29,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _isRequesting = false;
+  
 
   Future<void> _requestMembership() async {
     setState(() => _isRequesting = true);
@@ -178,6 +182,300 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
+  Future<void> _expireSubscription(String subscriptionId) async {
+    try {
+      final firestore = ref.read(firestoreProvider);
+      final docRef = firestore.collection('rose_awards_subscriptions').doc(subscriptionId);
+      
+      // Check current status to avoid unnecessary updates
+      final doc = await docRef.get();
+      if (doc.exists && doc.data()?['status'] == 'active') {
+        await docRef.update({
+          'status': 'expired',
+          'expiredAt': FieldValue.serverTimestamp(),
+        });
+        // Force UI refresh
+        if (mounted) {
+          setState(() {});
+        }
+      }
+    } catch (e) {
+      // Silently handle error - subscription might already be updated
+    }
+  }
+
+
+  Future<void> _handleCancelSubscription() async {
+    final user = ref.read(currentUserProvider);
+    if (user == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please ensure you are logged in.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cancel Subscription'),
+        content: const Text(
+          'Are you sure you want to cancel your Rose Awards voting membership? This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red,
+            ),
+            child: const Text('Yes, Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    // Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => PopScope(
+        canPop: false,
+        child: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      ),
+    );
+
+    try {
+      final firestore = ref.read(firestoreProvider);
+      
+      // Mark subscription as cancelled in Firestore
+      await firestore.collection('rose_awards_subscriptions').doc(user.uid).update({
+        'status': 'cancelled',
+        'cancelledAt': FieldValue.serverTimestamp(),
+      });
+
+      // Wait for next frame
+      await WidgetsBinding.instance.endOfFrame;
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      // Dismiss loading indicator
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+
+      // Refresh UI
+      if (mounted) {
+        setState(() {});
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Subscription cancelled successfully.'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      // Dismiss loading indicator
+      if (mounted) {
+        try {
+          Navigator.of(context, rootNavigator: true).pop();
+        } catch (_) {
+          // Dialog might already be dismissed
+        }
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to cancel subscription: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleRoseAwardsPayment() async {
+    final user = ref.read(currentUserProvider);
+    if (user == null || user.email == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please ensure you are logged in with a valid email.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+
+    // Store context before async operations
+    final navigatorContext = Navigator.of(context, rootNavigator: true);
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+    // Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => PopScope(
+        canPop: false,
+        child: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      ),
+    );
+
+    try {
+      final stripeService = ref.read(stripePaymentServiceProvider);
+      final firestore = ref.read(firestoreProvider);
+      final theme = Theme.of(context);
+      final themeMode = theme.brightness == Brightness.dark 
+          ? ThemeMode.dark 
+          : ThemeMode.light;
+
+      // Initialize payment sheet with Price ID and user email
+      await stripeService.initializePaymentSheetWithPriceId(
+        priceId: 'price_1ST7AJDgeZGoTF8LENWO7rYS',
+        merchantName: 'JB Gods',
+        style: themeMode,
+        customerEmail: user.email,
+      );
+
+      // Dismiss loading indicator
+      if (mounted && navigatorContext.canPop()) {
+        navigatorContext.pop();
+      }
+
+      // Small delay to ensure dialog is fully dismissed
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      // Present payment sheet
+      await stripeService.presentPaymentSheet();
+
+      // Wait for the next frame to ensure payment sheet is fully dismissed
+      await WidgetsBinding.instance.endOfFrame;
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // Payment successful - save subscription to Firestore
+      final expiresAtDate = DateTime.now().add(_SUBSCRIPTION_EXPIRATION_DURATION);
+      final expiresAtTimestamp = Timestamp.fromDate(expiresAtDate);
+      
+      try {
+        await firestore.collection('rose_awards_subscriptions').doc(user.uid).set({
+          'userId': user.uid,
+          'email': user.email,
+          'priceId': 'price_1ST7AJDgeZGoTF8LENWO7rYS',
+          'amount': 500.00,
+          'currency': 'USD',
+          'status': 'active',
+          'subscriptionType': 'annual',
+          'subscribedAt': FieldValue.serverTimestamp(),
+          'expiresAt': expiresAtTimestamp,
+        }, SetOptions(merge: true));
+
+        // Get user's name from profile
+        final userProfile = ref.read(userProfileProvider);
+        final fullName = userProfile?['name'] ?? userProfile?['username'] ?? 'Valued Member';
+
+        // Trigger email sending via Cloud Function
+        try {
+          final functions = ref.read(firebaseFunctionsProvider);
+          await functions.httpsCallable('sendRoseAwardsSubscriptionEmail').call({
+            'subscriptionId': user.uid,
+            'email': user.email,
+            'fullName': fullName,
+            'amountPaid': 500.00,
+            'subscriptionType': 'annual',
+            'expiresAt': expiresAtDate.toIso8601String(),
+          });
+        } catch (emailError) {
+          // Log error but don't fail the subscription
+          debugPrint('Failed to send Rose Awards subscription email: $emailError');
+          // Update subscription to indicate email failed
+          await firestore.collection('rose_awards_subscriptions').doc(user.uid).update({
+            'emailSent': false,
+            'emailError': emailError.toString(),
+          });
+        }
+      } catch (firestoreError) {
+        // Payment was successful but Firestore save failed
+        // Still show success message since payment went through
+        if (mounted) {
+          await WidgetsBinding.instance.endOfFrame;
+          scaffoldMessenger.showSnackBar(
+            SnackBar(
+              content: Text('✅ Payment successful! However, there was an issue saving your subscription. Please contact support. Error: ${firestoreError.toString()}'),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
+        return; // Exit early since we've handled the error
+      }
+
+      // Payment successful - show message and refresh UI
+      if (mounted) {
+        // Wait for next frame before updating UI
+        await WidgetsBinding.instance.endOfFrame;
+        
+        // Force a rebuild to update the button state
+        setState(() {});
+        
+        // Show success message using stored context
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(
+            content: Text('✅ Payment successful! You are now a voting member. Confirmation email sent.'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      // Dismiss loading indicator if still showing
+      if (mounted) {
+        try {
+          if (navigatorContext.canPop()) {
+            navigatorContext.pop();
+          }
+        } catch (_) {
+          // Dialog might already be dismissed
+        }
+      }
+
+      // Wait for next frame
+      await WidgetsBinding.instance.endOfFrame;
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      if (mounted) {
+        scaffoldMessenger.showSnackBar(
+          SnackBar(
+            content: Text('Payment failed: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+  }
+
 
   Widget _buildRequestButton(
     Map<String, dynamic> userProfile,
@@ -260,6 +558,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     // Pending request streams
     final hasPendingRequest = ref.watch(pendingRequestProvider);
     final hasPendingOwnerRequest = ref.watch(pendingOwnerRequestProvider);
+    final roseAwardsSubscription = ref.watch(roseAwardsSubscriptionProvider);
 
     // Community count label (only compute/watch for master to avoid rule errors)
     String communityLabel = '';
@@ -327,11 +626,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
 
     return Scaffold(
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
             Stack(
               children: const [
                 HeaderLogo(),
@@ -396,7 +696,168 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 fontWeight: FontWeight.bold,
               ),
             ),
+            // Show Rose Awards voting member status if subscribed
+            if (!isMaster) ...[
+              roseAwardsSubscription.when(
+                data: (subscriptionDoc) {
+                  if (subscriptionDoc?.exists == true) {
+                    final data = subscriptionDoc!.data()!;
+                    final status = data['status'] as String?;
+                    final expiresAt = data['expiresAt'] as Timestamp?;
+                    
+                    // Check if subscription is active and not expired
+                    final isExpired = expiresAt != null && 
+                        expiresAt.toDate().isBefore(DateTime.now());
+                    final hasActiveSubscription = status == 'active' && !isExpired;
+                    
+                    // Auto-expire subscription if it has passed expiration date
+                    if (status == 'active' && isExpired) {
+                      // Update subscription status to expired immediately
+                      _expireSubscription(subscriptionDoc.id);
+                    }
+                    
+                    if (hasActiveSubscription) {
+                      return Column(
+                        children: [
+                          const SizedBox(height: 6),
+                          Text(
+                            "You are now a Rose Awards voting member",
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: Colors.red,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      );
+                    }
+                  }
+                  return const SizedBox.shrink();
+                },
+                loading: () => const SizedBox.shrink(),
+                error: (_, __) => const SizedBox.shrink(),
+              ),
+            ],
             const SizedBox(height: 24),
+
+            // Rose Awards section - shown to all users except master
+            if (!isMaster) ...[
+              roseAwardsSubscription.when(
+                data: (subscriptionDoc) {
+                  bool hasActiveSubscription = false;
+                  
+                  if (subscriptionDoc?.exists == true) {
+                    final data = subscriptionDoc!.data()!;
+                    final status = data['status'] as String?;
+                    final expiresAt = data['expiresAt'] as Timestamp?;
+                    
+                    // Check if subscription is active and not expired
+                    final isExpired = expiresAt != null && 
+                        expiresAt.toDate().isBefore(DateTime.now());
+                    hasActiveSubscription = status == 'active' && !isExpired;
+                    
+                    // Auto-expire subscription if it has passed expiration date
+                    if (status == 'active' && isExpired) {
+                      // Update subscription status to expired immediately
+                      _expireSubscription(subscriptionDoc.id);
+                    }
+                  }
+                  
+                  if (hasActiveSubscription) {
+                    // Show voting button
+                    return Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: theme.colorScheme.primary.withOpacity(0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: JBButton(
+                        label: "Click to give your vote",
+                        onPressed: () => context.go('/voting/rose-awards'),
+                      ),
+                    );
+                  } else {
+                    // Show payment button
+                    return Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: theme.colorScheme.primary.withOpacity(0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          JBButton(
+                            label: "Vote for Rose Awards",
+                            onPressed: _handleRoseAwardsPayment,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            "Become a voting member by paying an annual fee of 500.00 USD",
+                            style: TextStyle(
+                              color: theme.colorScheme.primary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w400,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                },
+                loading: () => Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: theme.colorScheme.primary.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: const Center(
+                    child: CircularProgressIndicator(),
+                  ),
+                ),
+                error: (_, __) => Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: theme.colorScheme.primary.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      JBButton(
+                        label: "Vote for Rose Awards",
+                        onPressed: _handleRoseAwardsPayment,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        "Become a voting member by paying a daily fee of 500.00 USD",
+                        style: TextStyle(
+                          color: theme.colorScheme.primary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
 
             // first-time users see the request button and message
             if (userRole == 'first_time') ...[
@@ -489,8 +950,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
               const SizedBox(height: 12),
               JBButton(
+                label: "Event Requests",
+                onPressed: () => context.go('/admin/event-requests'),
+              ),
+              const SizedBox(height: 12),
+              JBButton(
                 label: "Reports",
                 onPressed: () => context.go('/admin/reports'),
+              ),
+              const SizedBox(height: 12),
+              JBButton(
+                label: "Annual memberships",
+                onPressed: () => context.go('/admin/annual-memberships'),
               ),
             ],
 
@@ -506,7 +977,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => EventParticipantsScreen(creatorId: user.uid),
+                      builder: (_) => EventParticipantsScreen(
+                        creatorId: user.uid,
+                        isMaster: isMaster,
+                      ),
                     ),
                   );
                 },
@@ -515,7 +989,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
 
             const SizedBox(height: 32),
-          ],
+            ],
+          ),
         ),
       ),
     );

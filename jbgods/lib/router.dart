@@ -17,7 +17,10 @@ import 'features/profile/privacy_policy_screen.dart';
 import 'features/auth/terms_privacy_screen.dart';
 import 'features/admin/requests_screen.dart';
 import 'features/admin/reports_screen.dart';
+import 'features/admin/annual_memberships_screen.dart';
+import 'features/admin/event_requests_screen.dart';
 import 'features/community/community_screen.dart';
+import 'features/voting/rose_awards_voting_screen.dart';
 import 'features/auth/signup_choice_screen.dart';
 import 'features/auth/signup_owner_screen.dart';
 import 'widgets/tab_scaffold.dart';
@@ -261,6 +264,49 @@ final routerProvider = Provider<GoRouter>((ref) {
           return null;
         },
         builder: (ctx, _) => const ReportsScreen(),
+      ),
+      GoRoute(
+        path: '/admin/annual-memberships',
+        redirect: (ctx, state) {
+          final auth = ref.read(authStateChangesProvider);
+          if (auth.isLoading) return null;
+          final user = auth.value;
+          if (user == null) return '/login';
+
+          final roleAsync = ref.read(currentUserRoleProvider);
+          if (roleAsync.isLoading) return null;
+          final role = roleAsync.value ?? 'first_time';
+          if (role != 'master') return '/shell/home';
+          return null;
+        },
+        builder: (ctx, _) => const AnnualMembershipsScreen(),
+      ),
+      GoRoute(
+        path: '/admin/event-requests',
+        redirect: (ctx, state) {
+          final auth = ref.read(authStateChangesProvider);
+          if (auth.isLoading) return null;
+          final user = auth.value;
+          if (user == null) return '/login';
+
+          final roleAsync = ref.read(currentUserRoleProvider);
+          if (roleAsync.isLoading) return null;
+          final role = roleAsync.value ?? 'first_time';
+          if (role != 'master') return '/shell/home';
+          return null;
+        },
+        builder: (ctx, _) => const EventRequestsScreen(),
+      ),
+      GoRoute(
+        path: '/voting/rose-awards',
+        redirect: (ctx, state) {
+          final auth = ref.read(authStateChangesProvider);
+          if (auth.isLoading) return null;
+          final user = auth.value;
+          if (user == null) return '/login';
+          return null;
+        },
+        builder: (ctx, _) => const RoseAwardsVotingScreen(),
       ),
       ShellRoute(
         builder: (ctx, state, child) => MainShell(child: child),

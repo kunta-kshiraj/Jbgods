@@ -27,6 +27,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     super.dispose();
   }
 
+
   bool get _isNearBottom {
     if (!_scroll.hasClients) return true;
     final pos = _scroll.position;
@@ -572,7 +573,7 @@ class _MessageTile extends StatelessWidget {
           Text(
             message,
             style: TextStyle(
-              color: theme.colorScheme.onSurface.withOpacity(.85), // Slightly different opacity for message
+              color: theme.colorScheme.onSurface.withOpacity(.85),
               height: 1.26,
               fontSize: 15,
             ),
@@ -582,6 +583,7 @@ class _MessageTile extends StatelessWidget {
       ),
     );
   }
+
 }
 
 /// Show report dialog and create report

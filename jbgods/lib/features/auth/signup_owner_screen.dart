@@ -256,6 +256,36 @@ class _SignUpOwnerScreenState extends ConsumerState<SignUpOwnerScreen> {
                       obscure: true,
                       validator: ValidationUtils.validatePassword,
                     ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Password Requirements:',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue[800],
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Must be at least 8 characters with uppercase, lowercase, special character, and digit',
+                            style: TextStyle(
+                              color: Colors.blue[700],
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                     const SizedBox(height: 12),
                     JBInput(
                       controller: confirmCtrl,
