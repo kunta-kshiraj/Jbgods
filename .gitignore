@@ -12,3 +12,6 @@ jbgods/.vscode/
 
 # macOS
 .DS_Store
+
+# Sensitive keys and secrets
+jbgods/lib/core/secret/stripe_keys.dart

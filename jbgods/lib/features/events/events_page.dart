@@ -21,6 +21,7 @@ class _EventsPageState extends ConsumerState<EventsPage> {
   DateTime? _selectedDay;
   List<Map<String, dynamic>> _events = [];
   bool _isAdminOrMaster = false;
+  int _refreshKey = 0; // Key to force FutureBuilder to rebuild
 
   @override
   void initState() {
@@ -393,6 +394,7 @@ class _EventsPageState extends ConsumerState<EventsPage> {
               ),
               child: !_isAdminOrMaster
                   ? FutureBuilder<bool>(
+                      key: ValueKey('enrollment_${e['id']}_$_refreshKey'), // Force rebuild when key changes
                       future: _isUserEnrolled(e['id']),
                       builder: (context, snapshot) {
                         final enrolled = snapshot.data ?? false;
@@ -418,13 +420,19 @@ class _EventsPageState extends ConsumerState<EventsPage> {
                         }
 
                         return ElevatedButton(
-                          onPressed: () {
-                            Navigator.push(
+                          onPressed: () async {
+                            final result = await Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (_) => EnrollScreen(event: e),
                               ),
                             );
+                            // Refresh enrollment status when returning from enrollment
+                            if (result == true || mounted) {
+                              setState(() {
+                                _refreshKey++; // Force FutureBuilder to rebuild
+                              });
+                            }
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.red,

@@ -335,7 +335,7 @@ class _EnrollScreenState extends ConsumerState<EnrollScreen> {
                               backgroundColor: Colors.green,
                             ),
                           );
-                          Navigator.pop(context);
+                          Navigator.pop(context, true); // Return true to indicate successful enrollment
                         }
                       } catch (e) {
                         // Dismiss loading indicator if still showing
