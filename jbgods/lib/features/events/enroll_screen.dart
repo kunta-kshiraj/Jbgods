@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/stripe_service.dart';
 import '../../data/auth_providers.dart';
+import '../../widgets/terms_conditions_dialog.dart';
 
 class EnrollScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic> event;
@@ -93,7 +94,7 @@ class _EnrollScreenState extends ConsumerState<EnrollScreen> {
                     keyboardType: TextInputType.emailAddress,
                     style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                     decoration: InputDecoration(
-                      labelText: 'Email ID',
+                      labelText: 'Email',
                       labelStyle: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
                       border: OutlineInputBorder(),
                       enabledBorder: OutlineInputBorder(
@@ -114,12 +115,31 @@ class _EnrollScreenState extends ConsumerState<EnrollScreen> {
                         onChanged: (v) => setState(() => _agree = v ?? false),
                       ),
                       Expanded(
-                        child: Text(
-                          'I agree to the Terms & Conditions',
-                          style: TextStyle(
-                            color: isDark ? Colors.white70 : Colors.black87,
+                        child: GestureDetector(
+                          onTap: () {
+                            showDialog(
+                              context: context,
+                              builder: (context) => TermsConditionsDialog(),
+                            );
+                          },
+                          child: RichText(
+                            text: TextSpan(
+                              text: 'I agree to the ',
+                              style: TextStyle(
+                                color: isDark ? Colors.white70 : Colors.black87,
+                              ),
+                              children: [
+                                TextSpan(
+                                  text: 'terms and conditions',
+                                  style: TextStyle(
+                                    color: Colors.red,
+                                    decoration: TextDecoration.underline,
+                                    decorationColor: Colors.red,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                          overflow: TextOverflow.clip,
                         ),
                       ),
                     ],

@@ -9,6 +9,7 @@ import 'theme.dart';
 import 'router.dart';
 import 'app_state.dart';
 import 'core/secret/stripe_keys.dart';
+import 'services/iap_service.dart';
 
 // Future<void> renameCollection() async {
 //   final firestore = FirebaseFirestore.instance;
@@ -51,6 +52,9 @@ void main() async {
     print('⚠️ WARNING: Stripe keys not configured!');
     print('Please update lib/core/secret/stripe_keys.dart with your Stripe API keys.');
   }
+  
+  // Initialize IAP service
+  await IAPService().initialize();
   
   await AppStateNotifier.ensurePrefsInitialized();
   runApp(const ProviderScope(child: JBGodsApp()));

@@ -394,3 +394,179 @@ exports.sendRoseAwardsSubscriptionEmail = functions.https.onCall(async (data, co
   }
 });
 
+// Cloud Function to send Rink Owner subscription confirmation email
+exports.sendRinkOwnerSubscriptionEmail = functions.https.onCall(async (data, context) => {
+  // Verify user is authenticated
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const { email, fullName, subscriptionType, expiresAt, subscriptionId } = data;
+
+  if (!email) {
+    throw new functions.https.HttpsError('invalid-argument', 'Missing required fields');
+  }
+
+  // Format expiration date if provided
+  let expirationStr = '1 month from today';
+  if (expiresAt) {
+    try {
+      let date;
+      
+      if (typeof expiresAt === 'object' && expiresAt.seconds) {
+        date = new Date(expiresAt.seconds * 1000);
+      } else if (typeof expiresAt === 'string') {
+        if (expiresAt.includes('Timestamp')) {
+          const match = expiresAt.match(/seconds=(\d+)/);
+          if (match) {
+            date = new Date(parseInt(match[1]) * 1000);
+          } else {
+            date = new Date(expiresAt);
+          }
+        } else {
+          date = new Date(expiresAt);
+        }
+      } else if (typeof expiresAt === 'number') {
+        date = expiresAt < 1000000000000 
+          ? new Date(expiresAt * 1000)
+          : new Date(expiresAt);
+      } else {
+        date = new Date(expiresAt);
+      }
+      
+      if (!isNaN(date.getTime())) {
+        expirationStr = date.toLocaleDateString('en-US', {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        });
+      }
+    } catch (e) {
+      console.error('Error parsing expiration date:', e, 'Raw date:', expiresAt);
+      expirationStr = '1 month from today';
+    }
+  }
+
+  const userName = fullName || 'Valued Rink Owner';
+
+  const mailOptions = {
+    from: functions.config().gmail?.email || process.env.GMAIL_EMAIL,
+    to: email,
+    subject: `✅ Payment Successful - Rink Owner Monthly Subscription Confirmed`,
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+          .content { background-color: #f9f9f9; padding: 20px; border-radius: 0 0 5px 5px; }
+          .success-icon { font-size: 48px; text-align: center; margin: 20px 0; }
+          .details { background-color: white; padding: 15px; margin: 15px 0; border-radius: 5px; border-left: 4px solid #4CAF50; }
+          .detail-row { margin: 10px 0; }
+          .label { font-weight: bold; color: #666; }
+          .value { color: #333; }
+          .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          .highlight { color: #4CAF50; font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>🏒 Rink Owner Subscription Confirmed!</h1>
+          </div>
+          <div class="content">
+            <div class="success-icon">✅</div>
+            <h2>Hello ${userName},</h2>
+            <p>Your payment has been processed successfully and you now have <span class="highlight">full access to all rink owner features</span>!</p>
+            
+            <div class="details">
+              <h3>Subscription Details:</h3>
+              <div class="detail-row">
+                <span class="label">Subscription Type:</span>
+                <span class="value">Monthly Membership</span>
+              </div>
+              <div class="detail-row">
+                <span class="label">Subscription Expires:</span>
+                <span class="value">${expirationStr}</span>
+              </div>
+            </div>
+            
+            <p><strong>What's Next?</strong></p>
+            <p>As an active rink owner, you now have access to:</p>
+            <ul>
+              <li>All rink owner features in the app</li>
+              <li>Your rink location displayed on the map</li>
+              <li>Event creation and management</li>
+              <li>Chat and community features</li>
+            </ul>
+            
+            <p>Your rink will be visible on the map to all users, and you can manage your rink details from your profile.</p>
+            <p>If you have any questions, please don't hesitate to contact us.</p>
+            
+            <div class="footer">
+              <p>Best regards,<br>JB Gods Team</p>
+            </div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+    text: `
+      Rink Owner Subscription Confirmed
+
+      Hello ${userName},
+
+      Your payment has been processed successfully and you now have full access to all rink owner features!
+
+      Subscription Details:
+      - Subscription Type: Monthly Membership
+      - Subscription Expires: ${expirationStr}
+
+      What's Next?
+      As an active rink owner, you now have access to:
+      - All rink owner features in the app
+      - Your rink location displayed on the map
+      - Event creation and management
+      - Chat and community features
+
+      Your rink will be visible on the map to all users, and you can manage your rink details from your profile.
+
+      Best regards,
+      JB Gods Team
+    `,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    
+    if (subscriptionId) {
+      await admin.firestore()
+        .collection('rink_owner_subscriptions')
+        .doc(subscriptionId)
+        .update({
+          'emailSent': true,
+          'emailSentAt': admin.firestore.FieldValue.serverTimestamp(),
+        });
+    }
+    
+    return { success: true, message: 'Email sent successfully' };
+  } catch (error) {
+    console.error('Error sending rink owner subscription email:', error);
+    
+    if (subscriptionId) {
+      await admin.firestore()
+        .collection('rink_owner_subscriptions')
+        .doc(subscriptionId)
+        .update({
+          'emailSent': false,
+          'emailError': error.message,
+        });
+    }
+    
+    throw new functions.https.HttpsError('internal', 'Failed to send email', error);
+  }
+});
+

@@ -1,0 +1,20 @@
+// RINK OWNER SUBSCRIPTIONS - Add this section to your Firestore rules
+// Place it after the ROSE_AWARDS_SUBSCRIPTIONS section
+
+match /rink_owner_subscriptions/{uid} {
+  // Users can create their own subscription
+  allow create: if self(uid) &&
+    request.resource.data.userId == request.auth.uid;
+
+  // Users can update their own subscription (for expiration)
+  allow update: if self(uid) &&
+    resource.data.userId == request.auth.uid &&
+    request.resource.data.userId == request.auth.uid;
+
+  // Users can read their own subscription, admins can read all
+  allow read: if self(uid) || isAdmin();
+
+  // No delete allowed (subscriptions should remain for records)
+  allow delete: if false;
+}
+

@@ -437,6 +437,7 @@ class _EventsPageState extends ConsumerState<EventsPage> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.red,
                             foregroundColor: Colors.white,
+                            elevation: 0,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -581,12 +582,65 @@ class _EventsPageState extends ConsumerState<EventsPage> {
     }
 
 
+  // Helper function to parse location string into address components
+  Map<String, String> _parseLocation(String? location) {
+    if (location == null || location.isEmpty) {
+      return {
+        'street': '',
+        'address2': '',
+        'city': '',
+        'state': '',
+        'zip': '',
+        'country': '',
+      };
+    }
+    
+    // Try to parse comma-separated address
+    final parts = location.split(',').map((e) => e.trim()).toList();
+    return {
+      'street': parts.isNotEmpty ? parts[0] : '',
+      'address2': parts.length > 1 ? parts[1] : '',
+      'city': parts.length > 2 ? parts[2] : '',
+      'state': parts.length > 3 ? parts[3] : '',
+      'zip': parts.length > 4 ? parts[4] : '',
+      'country': parts.length > 5 ? parts[5] : '',
+    };
+  }
+
+  // Helper function to combine address fields into location string
+  String _combineAddress({
+    required String street,
+    required String address2,
+    required String city,
+    required String state,
+    required String zip,
+    required String country,
+  }) {
+    final parts = <String>[];
+    if (street.isNotEmpty) parts.add(street);
+    if (address2.isNotEmpty) parts.add(address2);
+    if (city.isNotEmpty) parts.add(city);
+    if (state.isNotEmpty) parts.add(state);
+    if (zip.isNotEmpty) parts.add(zip);
+    if (country.isNotEmpty) parts.add(country);
+    return parts.join(', ');
+  }
+
   void _showCreateOrEditSheet(BuildContext context, {Map<String, dynamic>? event}) {
     final titleCtrl = TextEditingController(text: event?['title'] ?? '');
     final descCtrl = TextEditingController(text: event?['description'] ?? '');
     final costCtrl = TextEditingController(
         text: event?['cost']?.toString() ?? '');
-    final locCtrl = TextEditingController(text: event?['location'] ?? '');
+    
+    // Parse location into address components
+    final addressParts = _parseLocation(event?['location']);
+    final streetCtrl = TextEditingController(text: addressParts['street'] ?? '');
+    final address2Ctrl = TextEditingController(text: addressParts['address2'] ?? '');
+    final cityCtrl = TextEditingController(text: addressParts['city'] ?? '');
+    final stateCtrl = TextEditingController(text: addressParts['state'] ?? '');
+    final zipCtrl = TextEditingController(text: addressParts['zip'] ?? '');
+    final countryCtrl = TextEditingController(text: addressParts['country'] ?? '');
+    
     DateTime? selectedDate =
         (event?['date'] as Timestamp?)?.toDate();
     TimeOfDay? selectedTime = event?['time'] != null && event!['time'] != ''
@@ -650,13 +704,68 @@ class _EventsPageState extends ConsumerState<EventsPage> {
                         const SizedBox(height: 16),
                         JBInput(
                             controller: costCtrl,
-                            label: 'Cost',
+                            label: 'Cost in USD(Eg: 10.00)',
                             keyboardType: TextInputType.number,
                         ),
                         const SizedBox(height: 16),
+                        // Address Fields
+                        Text(
+                          'Address',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        // Street Address
                         JBInput(
-                            controller: locCtrl,
-                            label: 'Location',
+                          controller: streetCtrl,
+                          label: 'Street Address',
+                        ),
+                        const SizedBox(height: 16),
+                        // Address 2
+                        JBInput(
+                          controller: address2Ctrl,
+                          label: 'Address 2 (Optional)',
+                        ),
+                        const SizedBox(height: 16),
+                        // City and State in one row
+                        Row(
+                          children: [
+                            Expanded(
+                              child: JBInput(
+                                controller: cityCtrl,
+                                label: 'City',
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: JBInput(
+                                controller: stateCtrl,
+                                label: 'State',
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        // ZIP and Country in one row
+                        Row(
+                          children: [
+                            Expanded(
+                              child: JBInput(
+                                controller: zipCtrl,
+                                label: 'ZIP Code',
+                                keyboardType: TextInputType.number,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: JBInput(
+                                controller: countryCtrl,
+                                label: 'Country',
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 16),
                         // Date Picker
@@ -797,7 +906,11 @@ class _EventsPageState extends ConsumerState<EventsPage> {
                             label: event == null ? 'Create Event' : 'Save Changes',
                             onPressed: () async {
                               if (titleCtrl.text.trim().isEmpty ||
-                                  locCtrl.text.trim().isEmpty ||
+                                  streetCtrl.text.trim().isEmpty ||
+                                  cityCtrl.text.trim().isEmpty ||
+                                  stateCtrl.text.trim().isEmpty ||
+                                  zipCtrl.text.trim().isEmpty ||
+                                  countryCtrl.text.trim().isEmpty ||
                                   costCtrl.text.trim().isEmpty ||
                                   selectedDate == null ||
                                   selectedTime == null) {
@@ -809,7 +922,7 @@ class _EventsPageState extends ConsumerState<EventsPage> {
                                       style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                                     ),
                                     content: Text(
-                                        'Please fill in all required fields: Event Name, Location, Cost, Date, and Time.',
+                                        'Please fill in all required fields: Event Name, Street Address, City, State, ZIP Code, Country, Cost, Date, and Time.',
                                         style: TextStyle(color: isDark ? Colors.white70 : Colors.black87),
                                     ),
                                     backgroundColor: isDark ? theme.colorScheme.surface : Colors.white,
@@ -828,11 +941,21 @@ class _EventsPageState extends ConsumerState<EventsPage> {
                               }
 
                               final user = FirebaseAuth.instance.currentUser;
+                              // Combine address fields into location string
+                              final location = _combineAddress(
+                                street: streetCtrl.text.trim(),
+                                address2: address2Ctrl.text.trim(),
+                                city: cityCtrl.text.trim(),
+                                state: stateCtrl.text.trim(),
+                                zip: zipCtrl.text.trim(),
+                                country: countryCtrl.text.trim(),
+                              );
+
                               final data = <String, dynamic>{
                               'title': titleCtrl.text.trim(),
                               'description': descCtrl.text.trim(),
                               'cost': double.tryParse(costCtrl.text) ?? 0.0,
-                              'location': locCtrl.text.trim(),
+                              'location': location,
                               'date': Timestamp.fromDate(selectedDate!),
                               'time': selectedTime!.format(context),
                               'updatedAt': FieldValue.serverTimestamp(),
@@ -881,7 +1004,7 @@ class _EventsPageState extends ConsumerState<EventsPage> {
                                         .add(data);
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
-                                        content: Text('✅ Event request submitted! Waiting for master approval.'),
+                                        content: Text('✅ Event request submitted! Waiting for approval.'),
                                         backgroundColor: Colors.orange,
                                         duration: Duration(seconds: 4),
                                       ),

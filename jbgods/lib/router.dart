@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:io';
 import 'app_state.dart';
 import 'data/auth_providers.dart';
+import 'services/iap_service.dart';
 import 'features/splash/splash_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/signup_screen.dart';
@@ -37,6 +40,46 @@ class AuthStateNotifier extends ChangeNotifier {
   final Ref _ref;
 }
 
+/// Helper function to check if owner has active subscription (IAP or Firestore)
+Future<bool> _checkOwnerSubscription(WidgetRef ref) async {
+  try {
+    // Check IAP subscription first (iOS)
+    if (Platform.isIOS) {
+      final iapService = IAPService();
+      final hasIAPSubscription = await iapService.hasActiveSubscription();
+      if (hasIAPSubscription) {
+        return true;
+      }
+    }
+
+    // Check Firestore subscription (for Stripe purchases or legacy)
+    final user = ref.read(currentUserProvider);
+    if (user == null) return false;
+
+    final firestore = ref.read(firestoreProvider);
+    final subscriptionDoc = await firestore
+        .collection('rink_owner_subscriptions')
+        .doc(user.uid)
+        .get();
+
+    if (subscriptionDoc.exists) {
+      final data = subscriptionDoc.data()!;
+      final status = data['status'] as String?;
+      final expiresAt = data['expiresAt'] as Timestamp?;
+
+      if (status == 'active' && expiresAt != null) {
+        final isExpired = expiresAt.toDate().isBefore(DateTime.now());
+        return !isExpired;
+      }
+    }
+
+    return false;
+  } catch (e) {
+    debugPrint('Error checking owner subscription: $e');
+    return false;
+  }
+}
+
 class MainShell extends ConsumerWidget {
   final Widget child;
   const MainShell({required this.child, super.key});
@@ -50,7 +93,29 @@ class MainShell extends ConsumerWidget {
       return const ProfileScreen();
     }
     
-    // Members, admins, and approved owners get the full navigation
+    // For approved owners, check if they have active subscription
+    if (userRole == 'owner') {
+      return FutureBuilder<bool>(
+        future: _checkOwnerSubscription(ref),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          }
+          
+          final hasActiveSubscription = snapshot.data ?? false;
+          
+          // If owner doesn't have active subscription, show only profile page
+          if (!hasActiveSubscription) {
+            return const ProfileScreen();
+          }
+          
+          // Owner has active subscription, show full navigation
+          return _MainShellWithNavigation(child: child);
+        },
+      );
+    }
+    
+    // Members, admins, and masters get the full navigation
     return _MainShellWithNavigation(child: child);
   }
 }

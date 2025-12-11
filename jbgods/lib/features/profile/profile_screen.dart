@@ -12,13 +12,20 @@ import '../../data/firestore_streams.dart';
 import '../../utils/date_utils.dart';
 import '../../widgets/profile_picture_widget.dart';
 import '../../services/stripe_service.dart';
+import '../../services/iap_service.dart';
+import '../../widgets/terms_conditions_dialog.dart';
+import 'dart:io';
 import 'burger_menu.dart';
 import 'edit_profile_sheet.dart';
 import '../events/participants_screen.dart';
+import 'rink_owner_payment_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 // Annual subscription expiration: 1 year (365 days)
 const Duration _SUBSCRIPTION_EXPIRATION_DURATION = Duration(days: 365);
+
+// Monthly subscription expiration: 1 month (30 days)
+const Duration _RINK_OWNER_SUBSCRIPTION_DURATION = Duration(days: 30);
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -29,6 +36,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _isRequesting = false;
+  bool _roseAwardsAgree = false;
   
 
   Future<void> _requestMembership() async {
@@ -204,6 +212,274 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
+  Future<void> _checkAndExpireRinkOwnerSubscriptions() async {
+    try {
+      final user = ref.read(currentUserProvider);
+      if (user == null) return;
+
+      // Check IAP subscription first (iOS)
+      if (Platform.isIOS) {
+        final iapService = IAPService();
+        final hasIAPSubscription = await iapService.hasActiveSubscription();
+        if (hasIAPSubscription) {
+          // IAP subscription is active, sync to Firestore if needed
+          final firestore = ref.read(firestoreProvider);
+          final subscriptionDoc = await firestore
+              .collection('rink_owner_subscriptions')
+              .doc(user.uid)
+              .get();
+          
+          if (!subscriptionDoc.exists || subscriptionDoc.data()?['subscriptionSource'] != 'iap') {
+            // Sync IAP purchase to Firestore
+            final expirationDate = await iapService.getExpirationDate();
+            if (expirationDate != null) {
+              await firestore.collection('rink_owner_subscriptions').doc(user.uid).set({
+                'userId': user.uid,
+                'productId': 'com.jbgods.skatingrink_owners_monthly',
+                'status': 'active',
+                'subscriptionType': 'monthly',
+                'subscriptionSource': 'iap',
+                'subscribedAt': FieldValue.serverTimestamp(),
+                'expiresAt': Timestamp.fromDate(expirationDate),
+              }, SetOptions(merge: true));
+            }
+          }
+          return; // IAP subscription is active, no need to check Firestore
+        }
+      }
+
+      // Check Firestore subscription (for Stripe purchases or legacy)
+      final firestore = ref.read(firestoreProvider);
+      final subscriptionDoc = await firestore
+          .collection('rink_owner_subscriptions')
+          .doc(user.uid)
+          .get();
+
+      if (subscriptionDoc.exists) {
+        final data = subscriptionDoc.data()!;
+        final status = data['status'] as String?;
+        final expiresAt = data['expiresAt'] as Timestamp?;
+
+        if (status == 'active' && expiresAt != null) {
+          final isExpired = expiresAt.toDate().isBefore(DateTime.now());
+          if (isExpired) {
+            await _expireRinkOwnerSubscription(subscriptionDoc.id);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error in rink owner expiration checker: $e');
+    }
+  }
+
+  /// Check if user has active rink owner subscription (combines IAP and Firestore)
+  Future<bool> _checkRinkOwnerSubscriptionStatus() async {
+    try {
+      final user = ref.read(currentUserProvider);
+      if (user == null) return false;
+
+      // Check IAP subscription first (iOS)
+      if (Platform.isIOS) {
+        final iapService = IAPService();
+        final hasIAPSubscription = await iapService.hasActiveSubscription();
+        if (hasIAPSubscription) {
+          return true;
+        }
+      }
+
+      // Check Firestore subscription (for Stripe purchases or legacy)
+      final firestore = ref.read(firestoreProvider);
+      final subscriptionDoc = await firestore
+          .collection('rink_owner_subscriptions')
+          .doc(user.uid)
+          .get();
+
+      if (subscriptionDoc.exists) {
+        final data = subscriptionDoc.data()!;
+        final status = data['status'] as String?;
+        final expiresAt = data['expiresAt'] as Timestamp?;
+
+        if (status == 'active' && expiresAt != null) {
+          final isExpired = expiresAt.toDate().isBefore(DateTime.now());
+          if (!isExpired) {
+            return true;
+          } else {
+            // Expired, update status
+            await _expireRinkOwnerSubscription(subscriptionDoc.id);
+          }
+        }
+      }
+
+      return false;
+    } catch (e) {
+      debugPrint('Error checking rink owner subscription status: $e');
+      return false;
+    }
+  }
+
+  Future<void> _expireRinkOwnerSubscription(String subscriptionId) async {
+    try {
+      final firestore = ref.read(firestoreProvider);
+      await firestore.collection('rink_owner_subscriptions').doc(subscriptionId).update({
+        'status': 'expired',
+        'expiredAt': FieldValue.serverTimestamp(),
+      });
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      debugPrint('Error expiring rink owner subscription: $e');
+    }
+  }
+
+  Future<void> _handleRinkOwnerPayment() async {
+    final user = ref.read(currentUserProvider);
+    if (user == null || user.email == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please ensure you are logged in with a valid email.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+
+    final navigatorContext = Navigator.of(context, rootNavigator: true);
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => PopScope(
+        canPop: false,
+        child: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      ),
+    );
+
+    try {
+      final stripeService = ref.read(stripePaymentServiceProvider);
+      final firestore = ref.read(firestoreProvider);
+      final theme = Theme.of(context);
+      final themeMode = theme.brightness == Brightness.dark 
+          ? ThemeMode.dark 
+          : ThemeMode.light;
+
+      await stripeService.initializePaymentSheetWithPriceId(
+        priceId: 'price_1ST7GwDgeZGoTF8Lt5keGq1k',
+        merchantName: 'JB Gods',
+        style: themeMode,
+        customerEmail: user.email,
+      );
+
+      if (mounted && navigatorContext.canPop()) {
+        navigatorContext.pop();
+      }
+
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      await stripeService.presentPaymentSheet();
+
+      await WidgetsBinding.instance.endOfFrame;
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      final expiresAtDate = DateTime.now().add(_RINK_OWNER_SUBSCRIPTION_DURATION);
+      final expiresAtTimestamp = Timestamp.fromDate(expiresAtDate);
+      
+      try {
+        final userProfile = ref.read(userProfileProvider);
+        // Get email from profile first, fallback to user.email
+        final ownerEmail = userProfile?['email'] ?? user.email;
+        
+        await firestore.collection('rink_owner_subscriptions').doc(user.uid).set({
+          'userId': user.uid,
+          'email': ownerEmail,
+          'priceId': 'price_1ST7GwDgeZGoTF8Lt5keGq1k',
+          'amount': 0.0, // Will be set by Stripe subscription
+          'currency': 'USD',
+          'status': 'active',
+          'subscriptionType': 'monthly',
+          'subscribedAt': FieldValue.serverTimestamp(),
+          'expiresAt': expiresAtTimestamp,
+        }, SetOptions(merge: true));
+
+        final fullName = userProfile?['name'] ?? userProfile?['ownerName'] ?? userProfile?['username'] ?? 'Valued Rink Owner';
+        
+        if (ownerEmail == null || ownerEmail.isEmpty) {
+          debugPrint('Warning: No email found for rink owner subscription');
+        } else {
+          final functions = ref.read(firebaseFunctionsProvider);
+
+          try {
+            await functions.httpsCallable('sendRinkOwnerSubscriptionEmail').call({
+              'subscriptionId': user.uid,
+              'email': ownerEmail,
+              'fullName': fullName,
+              'subscriptionType': 'monthly',
+              'expiresAt': expiresAtDate.toIso8601String(),
+            });
+            debugPrint('✅ Rink owner subscription email sent successfully to: $ownerEmail');
+          } catch (emailError) {
+            debugPrint('❌ Failed to send rink owner subscription email: $emailError');
+            await firestore.collection('rink_owner_subscriptions').doc(user.uid).update({
+              'emailSent': false,
+              'emailError': emailError.toString(),
+            });
+          }
+        }
+
+        if (mounted) {
+          await WidgetsBinding.instance.endOfFrame;
+          setState(() {});
+          scaffoldMessenger.showSnackBar(
+            const SnackBar(
+              content: Text('✅ Payment successful! You now have access to all rink owner features. Confirmation email sent.'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      } catch (firestoreError) {
+        if (mounted) {
+          scaffoldMessenger.showSnackBar(
+            SnackBar(
+              content: Text('Payment successful but failed to save subscription: $firestoreError'),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
+        return;
+      }
+    } catch (e) {
+      if (mounted) {
+        try {
+          if (navigatorContext.canPop()) {
+            navigatorContext.pop();
+          }
+        } catch (_) {}
+      }
+
+      await WidgetsBinding.instance.endOfFrame;
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      if (mounted) {
+        scaffoldMessenger.showSnackBar(
+          SnackBar(
+            content: Text('Payment failed: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+  }
+
 
   Future<void> _handleCancelSubscription() async {
     final user = ref.read(currentUserProvider);
@@ -312,6 +588,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _handleRoseAwardsPayment() async {
+    if (!_roseAwardsAgree) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please agree to the terms and conditions first'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
     final user = ref.read(currentUserProvider);
     if (user == null || user.email == null) {
       if (mounted) {
@@ -353,7 +641,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
       // Initialize payment sheet with Price ID and user email
       await stripeService.initializePaymentSheetWithPriceId(
-        priceId: 'price_1ST7AJDgeZGoTF8LENWO7rYS',
+        priceId: 'price_1Sa6NlDgeZGoTF8LkvN3Y3BF',
         merchantName: 'JB Gods',
         style: themeMode,
         customerEmail: user.email,
@@ -382,7 +670,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         await firestore.collection('rose_awards_subscriptions').doc(user.uid).set({
           'userId': user.uid,
           'email': user.email,
-          'priceId': 'price_1ST7AJDgeZGoTF8LENWO7rYS',
+          'priceId': 'price_1Sa6NlDgeZGoTF8LkvN3Y3BF',
           'amount': 500.00,
           'currency': 'USD',
           'status': 'active',
@@ -554,11 +842,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final isMaster = userRole == 'master';
     final isOwner = userRole == 'owner';
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     // Pending request streams
     final hasPendingRequest = ref.watch(pendingRequestProvider);
     final hasPendingOwnerRequest = ref.watch(pendingOwnerRequestProvider);
     final roseAwardsSubscription = ref.watch(roseAwardsSubscriptionProvider);
+    final rinkOwnerSubscription = ref.watch(rinkOwnerSubscriptionProvider);
 
     // Community count label (only compute/watch for master to avoid rule errors)
     String communityLabel = '';
@@ -775,7 +1065,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         ),
                       ),
                       child: JBButton(
-                        label: "Click to give your vote",
+                        label: "Click to Vote for JBGODS Rose Awards",
                         onPressed: () => context.go('/voting/rose-awards'),
                       ),
                     );
@@ -806,6 +1096,43 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                               fontWeight: FontWeight.w400,
                             ),
                             textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Checkbox(
+                                value: _roseAwardsAgree,
+                                onChanged: (val) => setState(() => _roseAwardsAgree = val ?? false),
+                              ),
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () {
+                                    showDialog(
+                                      context: context,
+                                      builder: (context) => TermsConditionsDialog(),
+                                    );
+                                  },
+                                  child: RichText(
+                                    text: TextSpan(
+                                      text: 'I agree to the ',
+                                      style: TextStyle(
+                                        color: isDark ? Colors.white70 : Colors.black87,
+                                      ),
+                                      children: [
+                                        TextSpan(
+                                          text: 'terms and conditions',
+                                          style: TextStyle(
+                                            color: Colors.red,
+                                            decoration: TextDecoration.underline,
+                                            decorationColor: Colors.red,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -933,6 +1260,150 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
             ],
 
+            // Rink Owner Monthly Subscription Payment
+            if (isOwner) ...[
+              FutureBuilder<bool>(
+                future: _checkRinkOwnerSubscriptionStatus(),
+                builder: (context, snapshot) {
+                  final hasActiveSubscription = snapshot.data ?? false;
+                  
+                  if (!hasActiveSubscription) {
+                    return Column(
+                      children: [
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: theme.colorScheme.primary.withOpacity(0.3),
+                              width: 1,
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              ElevatedButton(
+                                onPressed: () async {
+                                  final result = await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => const RinkOwnerPaymentScreen(),
+                                    ),
+                                  );
+                                  // Refresh UI if payment was successful
+                                  if (result == true && mounted) {
+                                    setState(() {});
+                                  }
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: theme.colorScheme.primary,
+                                  foregroundColor: Colors.white,
+                                  minimumSize: const Size(double.infinity, 56),
+                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  elevation: 0,
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      "Click to pay for Rink Owner",
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      "Monthly Subscription",
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w400,
+                                        color: Colors.white,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                "Pay monthly subscription to access all rink owner features and display your rink on the map",
+                                style: TextStyle(
+                                  color: theme.colorScheme.primary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w400,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              if (Platform.isIOS) ...[
+                                const SizedBox(height: 12),
+                                TextButton.icon(
+                                  onPressed: () async {
+                                    showDialog(
+                                      context: context,
+                                      builder: (context) => const Center(
+                                        child: CircularProgressIndicator(),
+                                      ),
+                                    );
+                                    
+                                    try {
+                                      await IAPService().restorePurchases();
+                                      await Future.delayed(const Duration(seconds: 2));
+                                      
+                                      if (mounted) {
+                                        Navigator.pop(context);
+                                        final hasActive = await IAPService().hasActiveSubscription();
+                                        
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text(hasActive
+                                                ? '✅ Purchases restored successfully!'
+                                                : 'No active purchases found to restore.'),
+                                            backgroundColor: hasActive ? Colors.green : Colors.orange,
+                                          ),
+                                        );
+                                        
+                                        if (hasActive && mounted) {
+                                          setState(() {});
+                                        }
+                                      }
+                                    } catch (e) {
+                                      if (mounted) {
+                                        Navigator.pop(context);
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text('Failed to restore purchases: $e'),
+                                            backgroundColor: Colors.red,
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                                  icon: const Icon(Icons.restore),
+                                  label: const Text('Restore Purchase'),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: theme.colorScheme.primary,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  }
+                  
+                  return const SizedBox.shrink();
+                },
+              ),
+            ],
+
             // Only admins/master can access Admin Requests (NOT owners)
             if (isAdmin && !isOwner) ...[
               JBButton(
@@ -965,8 +1436,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
             ],
 
-            // Show "Event Participants" for master and admins (rink owners)
-            if (isMaster || isAdmin) ...[
+            // Show "Event Participants" for master, admins, and owners with active subscription
+            if (isMaster || (isAdmin && !isOwner)) ...[
+              // Master and non-owner admins always see this
               const SizedBox(height: 12),
               JBButton(
                 label: "Event Participants",
@@ -984,6 +1456,53 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                   );
                 },
+              ),
+            ] else if (isOwner) ...[
+              // Owners only see this if they have active subscription
+              rinkOwnerSubscription.when(
+                data: (subscriptionDoc) {
+                  bool hasActiveSubscription = false;
+                  
+                  if (subscriptionDoc?.exists == true) {
+                    final data = subscriptionDoc!.data()!;
+                    final status = data['status'] as String?;
+                    final expiresAt = data['expiresAt'] as Timestamp?;
+                    
+                    if (status == 'active' && expiresAt != null) {
+                      final isExpired = expiresAt.toDate().isBefore(DateTime.now());
+                      hasActiveSubscription = !isExpired;
+                    }
+                  }
+                  
+                  if (hasActiveSubscription) {
+                    return Column(
+                      children: [
+                        const SizedBox(height: 12),
+                        JBButton(
+                          label: "Event Participants",
+                          onPressed: () {
+                            final user = FirebaseAuth.instance.currentUser;
+                            if (user == null) return;
+
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => EventParticipantsScreen(
+                                  creatorId: user.uid,
+                                  isMaster: false,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    );
+                  }
+                  
+                  return const SizedBox.shrink();
+                },
+                loading: () => const SizedBox.shrink(),
+                error: (_, __) => const SizedBox.shrink(),
               ),
             ],
 

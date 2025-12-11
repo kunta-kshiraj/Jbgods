@@ -57,7 +57,7 @@ class _RinksScreenState extends State<RinksScreen> {
         }
       }
       _currentDocs = snapshot.docs;
-      _updateMarkers(snapshot.docs);
+      _updateMarkersAsync(snapshot.docs);
       _updateSearchResults(); // Update search results when rinks change
     }, onError: (error) {
       debugPrint('Error listening to rinks: $error');
@@ -138,7 +138,38 @@ class _RinksScreenState extends State<RinksScreen> {
     }
   }
 
-  void _updateMarkers(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+  Future<bool> _hasActiveSubscription(String ownerUid) async {
+    try {
+      final subscriptionDoc = await FirebaseFirestore.instance
+          .collection('rink_owner_subscriptions')
+          .doc(ownerUid)
+          .get();
+
+      if (!subscriptionDoc.exists) {
+        return false;
+      }
+
+      final data = subscriptionDoc.data()!;
+      final status = data['status'] as String?;
+      final expiresAt = data['expiresAt'] as Timestamp?;
+
+      if (status != 'active') {
+        return false;
+      }
+
+      if (expiresAt == null) {
+        return false;
+      }
+
+      final isExpired = expiresAt.toDate().isBefore(DateTime.now());
+      return !isExpired;
+    } catch (e) {
+      debugPrint('Error checking subscription for $ownerUid: $e');
+      return false;
+    }
+  }
+
+  Future<void> _updateMarkersAsync(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) async {
     debugPrint('_updateMarkers called with ${docs.length} rinks');
     final markers = <Marker>{};
 
@@ -148,12 +179,20 @@ class _RinksScreenState extends State<RinksScreen> {
       final rinkName = data['rinkName'] ?? 'Unnamed Rink';
       final latitude = data['latitude'];
       final longitude = data['longitude'];
+      final ownerUid = doc.id; // Rink doc ID is the owner UID
 
       debugPrint('Rink ${doc.id}: name=$rinkName, address=$address, lat=$latitude, lng=$longitude');
 
       // Use stored coordinates if available, otherwise skip
       if (latitude == null || longitude == null) {
         debugPrint('Rink ${doc.id} missing coordinates, skipping');
+        continue;
+      }
+
+      // Check if owner has active subscription
+      final hasActiveSub = await _hasActiveSubscription(ownerUid);
+      if (!hasActiveSub) {
+        debugPrint('Rink ${doc.id} owner does not have active subscription, skipping');
         continue;
       }
 
@@ -220,7 +259,7 @@ class _RinksScreenState extends State<RinksScreen> {
   void _refreshMarkers() {
     // Force refresh markers to update selected state
     if (_currentDocs.isNotEmpty) {
-      _updateMarkers(_currentDocs);
+      _updateMarkersAsync(_currentDocs);
     }
   }
 

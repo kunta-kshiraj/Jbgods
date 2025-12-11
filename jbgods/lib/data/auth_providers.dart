@@ -190,4 +190,19 @@ final roseAwardsSubscriptionProvider =
       .snapshots();
 });
 
+/// Check if rink owner has active monthly subscription
+final rinkOwnerSubscriptionProvider =
+    StreamProvider<DocumentSnapshot<Map<String, dynamic>>?>((ref) {
+  final user = ref.watch(currentUserProvider);
+  final firestore = ref.watch(firestoreProvider);
+
+  if (user == null) {
+    return const Stream<DocumentSnapshot<Map<String, dynamic>>?>.empty();
+  }
+  return firestore
+      .collection('rink_owner_subscriptions')
+      .doc(user.uid)
+      .snapshots();
+});
+
 

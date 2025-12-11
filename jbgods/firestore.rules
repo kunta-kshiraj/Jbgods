@@ -1,0 +1,245 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function self(uid) { return signedIn() && request.auth.uid == uid; }
+
+    function userRole(uid) {
+      return exists(/databases/$(db)/documents/users/$(uid))
+        ? (get(/databases/$(db)/documents/users/$(uid)).data.role != null
+            ? get(/databases/$(db)/documents/users/$(uid)).data.role
+            : "first_time")
+        : "anon";
+    }
+    function myRole()    { return signedIn() ? userRole(request.auth.uid) : "anon"; }
+    function isAdmin()   { return myRole() == "admin" || myRole() == "master"; }
+    function isOwner()   { return myRole() == "owner"; }
+    function isMaster()  { return myRole() == "master"; }
+
+    // USERS
+    match /users/{uid} {
+      allow read: if signedIn() && (self(uid) || isAdmin());
+
+      // Self can update anything EXCEPT role/rejectCount
+      allow update: if self(uid) &&
+        !('role' in request.resource.data.diff(resource.data).changedKeys()) &&
+        !('rejectCount' in request.resource.data.diff(resource.data).changedKeys());
+
+      // ADMIN: may set role -> 'member' (promote) and/or increment rejectCount by +1 (<=3)
+      allow update: if isAdmin() && (
+        (
+          ('role' in request.resource.data.diff(resource.data).changedKeys()) &&
+          (request.resource.data.role == 'member' || request.resource.data.role == 'owner')
+        ) ||
+        (
+          ('rejectCount' in request.resource.data.diff(resource.data).changedKeys()) &&
+          request.resource.data.rejectCount == (resource.data.rejectCount + 1) &&
+          request.resource.data.rejectCount <= 3
+        )
+      );
+
+      // MASTER: full control
+      allow update: if isMaster();
+
+      allow create: if self(uid);
+      allow delete: if self(uid);
+    }
+
+    // MEMBERSHIP REQUESTS
+    match /requests/{uid} {
+      // first request
+      allow create: if self(uid) &&
+        !exists(/databases/$(db)/documents/requests/$(uid)) &&
+        get(/databases/$(db)/documents/users/$(uid)).data.rejectCount < 3 &&
+        request.resource.data.status == "pending";
+
+      // user can re-open rejected -> pending (below cap)
+      allow update: if self(uid) &&
+        resource.data.status == "rejected" &&
+        request.resource.data.status == "pending" &&
+        get(/databases/$(db)/documents/users/$(uid)).data.rejectCount < 3;
+
+      // admins can decide pending -> approved|rejected
+      allow update: if isAdmin() &&
+        resource.data.status == "pending" &&
+        (request.resource.data.status == "approved" || request.resource.data.status == "rejected");
+
+      allow read: if self(uid) || isAdmin();
+
+      allow delete: if self(uid) || isAdmin();
+    }
+    
+    // OWNER REQUESTS
+    match /owner_requests/{uid} {
+      // rink owner can submit their first request
+      allow create: if self(uid) &&
+        request.resource.data.status == "pending" &&
+        !exists(/databases/$(db)/documents/owner_requests/$(uid));
+      
+      // admins or master can approve/reject owner requests
+      allow update: if isAdmin() &&
+        resource.data.status == "pending" &&
+        (request.resource.data.status == "approved" || request.resource.data.status == "rejected");
+
+      // allow reads for self or admin
+      allow read: if self(uid) || isAdmin();
+
+      // allow delete only by admin/master
+      allow delete: if isAdmin();
+    }
+
+    // UPDATES
+    match /updates/{id} {
+      allow read: if signedIn();
+      allow create, update, delete: if isAdmin() || isOwner();
+    }
+
+    // CHAT MESSAGES
+    match /messages/{id} {
+      allow read: if signedIn();
+      allow create: if isAdmin() || isOwner();
+      // Only author or master can edit/delete (per your spec)
+      allow update, delete: if signedIn() &&
+        (request.auth.uid == resource.data.authorId || isMaster());
+    }
+    
+    // REPORTS
+    match /reports/{reportId} {
+      // Any signed-in user can create a report
+      allow create: if signedIn() && 
+        request.resource.data.reporterId == request.auth.uid &&
+        request.resource.data.status == "pending";
+
+      // Only master can read all reports
+      allow read: if isMaster();
+
+      // Only master can update report status (accept/ignore)
+      allow update: if isMaster() && 
+        resource.data.status == "pending" &&
+        (request.resource.data.status == "accepted" || request.resource.data.status == "ignored");
+
+      // Only master can delete reports
+      allow delete: if isMaster();
+    }
+    
+    // BLOCKED USERS
+    match /blockedUsers/{docId} {
+      allow create: if signedIn() && request.resource.data.blockerId == request.auth.uid;
+      allow read: if signedIn() && resource.data.blockerId == request.auth.uid; 
+      allow delete: if signedIn() && resource.data.blockerId == request.auth.uid;
+    }
+    
+    // EVENT REQUESTS (Pending events waiting for master approval)
+    match /event_requests/{requestId} {
+      // Admins and owners can create event requests
+      allow create: if (isAdmin() || isOwner()) &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.status == "pending";
+
+      // Creators can read their own requests
+      allow read: if signedIn() && resource.data.createdBy == request.auth.uid;
+
+      // Master can read all event requests
+      allow read: if isMaster();
+
+      // Master can update status (approve/reject)
+      allow update: if isMaster() &&
+        resource.data.status == "pending" &&
+        (request.resource.data.status == "approved" || request.resource.data.status == "rejected");
+
+      // Master can delete approved/rejected requests (cleanup)
+      allow delete: if isMaster();
+    }
+
+    // EVENTS
+    match /events/{id} {
+      // Anyone signed in can view events
+      allow read: if signedIn();
+
+      // Only master can create events directly (admins/owners go through event_requests)
+      // Master can create events with any createdBy (when approving requests)
+      allow create: if isMaster();
+
+      // Only the creator or master can edit/delete events
+      // Also prevent changing createdBy field during updates
+      allow update: if signedIn() &&
+        (resource.data.createdBy == request.auth.uid || isMaster()) &&
+        (!('createdBy' in request.resource.data.diff(resource.data).changedKeys()) ||
+         request.resource.data.createdBy == resource.data.createdBy);
+
+      // Only the creator or master can delete events
+      allow delete: if signedIn() &&
+        (resource.data.createdBy == request.auth.uid || isMaster());
+    }
+    
+    // REGISTRATIONS
+    match /registrations/{docId} {
+      // Any signed-in user can create their own registration
+      allow create: if request.auth != null
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.eventId is string
+        && request.resource.data.fullName is string
+        && request.resource.data.email is string;
+
+      // Allow the user to read only their own registrations
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+
+      // Only master or admin can read all registrations (to view participants)
+      allow list, get: if isAdmin() || isOwner();
+
+      // No user should update/delete registration manually
+      allow update, delete: if false;
+    }
+
+    // RINKS COLLECTION
+    match /rinks/{uid} {
+      // Owners can read their own rink, admins can read all
+      allow read: if signedIn();
+      
+      // Owners can create/update their own rink, admins can update any
+      allow create, update: if self(uid) || isAdmin();
+      
+      // Only admins/master can delete rinks (NOT owners)
+      allow delete: if isMaster();
+    }
+
+    // ROSE AWARDS SUBSCRIPTIONS
+    match /rose_awards_subscriptions/{uid} {
+      // Users can create their own subscription
+      allow create: if self(uid) &&
+        request.resource.data.userId == request.auth.uid;
+
+      // Users can update their own subscription (for cancellation/expiration)
+      allow update: if self(uid) &&
+        resource.data.userId == request.auth.uid &&
+        request.resource.data.userId == request.auth.uid;
+
+      // Users can read their own subscription, admins can read all
+      allow read: if self(uid) || isAdmin();
+
+      // No delete allowed (subscriptions should remain for records)
+      allow delete: if false;
+    }
+
+    // RINK OWNER SUBSCRIPTIONS (NEW - Monthly subscription for rink owners)
+    match /rink_owner_subscriptions/{uid} {
+      // Users can create their own subscription
+      allow create: if self(uid) &&
+        request.resource.data.userId == request.auth.uid;
+
+      // Users can update their own subscription (for expiration)
+      allow update: if self(uid) &&
+        resource.data.userId == request.auth.uid &&
+        request.resource.data.userId == request.auth.uid;
+
+      // Allow all signed-in users to read subscription status (needed for rink visibility check)
+      // Users can read their own subscription, admins can read all, and any signed-in user can read status/expiresAt for visibility
+      allow read: if signedIn();
+
+      // No delete allowed (subscriptions should remain for records)
+      allow delete: if false;
+    }
+  }
+}
+
