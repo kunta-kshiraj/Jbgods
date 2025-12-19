@@ -18,3 +18,4 @@ match /rink_owner_subscriptions/{uid} {
   allow delete: if false;
 }
 
+
