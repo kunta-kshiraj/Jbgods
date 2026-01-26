@@ -19,3 +19,4 @@ match /rink_owner_subscriptions/{uid} {
 }
 
 
+
