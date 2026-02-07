@@ -240,6 +240,42 @@ service cloud.firestore {
       // No delete allowed (subscriptions should remain for records)
       allow delete: if false;
     }
+
+    // RINK LISTINGS (skating rinks list - name, city, state, likes)
+    // Masters add directly (approved); admins submit pending; master approves/rejects.
+    match /rink_listings/{id} {
+      // Signed-in users can read approved listings; master can read all; users can read their own (pending) submissions
+      allow read: if signedIn() && (
+        resource.data.status == 'approved' ||
+        isMaster() ||
+        resource.data.addedBy == request.auth.uid
+      );
+
+      // Master: create with status approved; admin: create with status pending only
+      allow create: if signedIn() &&
+        request.resource.data.addedBy == request.auth.uid &&
+        request.resource.data.likeCount == 0 &&
+        (
+          (isMaster() && request.resource.data.status == 'approved') ||
+          (myRole() == 'admin' && request.resource.data.status == 'pending')
+        );
+
+      // Master can update (e.g. approve); any signed-in user can only increment likeCount by 1
+      allow update: if isMaster() || (
+        signedIn() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likeCount']) &&
+        request.resource.data.likeCount == resource.data.likeCount + 1
+      );
+
+      allow delete: if isMaster();
+    }
+
+    // Likes subcollection under each rink listing (unlimited likes per user)
+    match /rink_listings/{listingId}/likes/{likeId} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if signedIn();
+      allow update, delete: if false;
+    }
   }
 }
 

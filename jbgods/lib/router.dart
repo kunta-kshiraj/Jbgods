@@ -15,6 +15,8 @@ import 'features/home/home_screen.dart';
 import 'features/chat/chat_screen.dart';
 import 'features/events/events_page.dart';
 import 'features/rinks/rinks_screen.dart';
+import 'features/rinks/rink_list_screen.dart';
+import 'features/rinks/add_rink_listing_screen.dart';
 import 'features/profile/profile_screen.dart';
 import 'features/profile/privacy_policy_screen.dart';
 import 'features/auth/terms_privacy_screen.dart';
@@ -147,6 +149,8 @@ class _MainShellWithNavigationState extends ConsumerState<_MainShellWithNavigati
         _currentIndex = 2;
         break;
       case '/shell/rinks':
+      case '/shell/rinks/list':
+      case '/shell/rinks/add':
         _currentIndex = 3;
         break;
       case '/shell/profile':
@@ -395,6 +399,24 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/shell/rinks',
             builder: (ctx, _) => const RinksScreen(),
+          ),
+          GoRoute(
+            path: '/shell/rinks/list',
+            builder: (ctx, _) => const RinkListScreen(),
+          ),
+          GoRoute(
+            path: '/shell/rinks/add',
+            redirect: (ctx, state) {
+              final auth = ref.read(authStateChangesProvider);
+              if (auth.isLoading) return null;
+              if (auth.value == null) return '/login';
+              final roleAsync = ref.read(currentUserRoleProvider);
+              if (roleAsync.isLoading) return null;
+              final role = roleAsync.value ?? 'first_time';
+              if (role != 'admin' && role != 'master') return '/shell/rinks';
+              return null;
+            },
+            builder: (ctx, _) => const AddRinkListingScreen(),
           ),
         ],
       ),

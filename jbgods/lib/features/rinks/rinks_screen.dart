@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'rink_list_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -552,6 +553,9 @@ class _RinksScreenState extends State<RinksScreen> {
             },
             markers: _markers,
             zoomControlsEnabled: false,
+            myLocationButtonEnabled: false,
+            compassEnabled: false,
+            mapToolbarEnabled: false,
           ),
           // Search Bar
           Positioned(
@@ -683,6 +687,48 @@ class _RinksScreenState extends State<RinksScreen> {
                   ),
                 ),
               ],
+            ),
+          ),
+          // Skating Rinks List — floating pill, centered above bottom nav
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 4,
+            child: Center(
+              child: Material(
+                color: isDark ? theme.colorScheme.surface : Colors.white,
+                borderRadius: BorderRadius.circular(999),
+                elevation: 4,
+                shadowColor: Colors.black.withOpacity(0.2),
+                child: InkWell(
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const RinkListScreen()),
+                  ),
+                  borderRadius: BorderRadius.circular(999),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.list_alt,
+                          size: 22,
+                          color: theme.colorScheme.primary,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Skating Rinks List',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         ],

@@ -55,7 +55,7 @@ void main() async {
   
   // Initialize IAP service
   await IAPService().initialize();
-  
+
   await AppStateNotifier.ensurePrefsInitialized();
   runApp(const ProviderScope(child: JBGodsApp()));
 }
