@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:io';
 import 'app_state.dart';
 import 'data/auth_providers.dart';
+import 'data/firestore_streams.dart';
 import 'services/iap_service.dart';
 import 'features/splash/splash_screen.dart';
 import 'features/auth/login_screen.dart';
@@ -25,6 +26,7 @@ import 'features/admin/reports_screen.dart';
 import 'features/admin/annual_memberships_screen.dart';
 import 'features/admin/event_requests_screen.dart';
 import 'features/community/community_screen.dart';
+import 'features/notifications/notifications_screen.dart';
 import 'features/voting/rose_awards_voting_screen.dart';
 import 'features/auth/signup_choice_screen.dart';
 import 'features/auth/signup_owner_screen.dart';
@@ -161,12 +163,20 @@ class _MainShellWithNavigationState extends ConsumerState<_MainShellWithNavigati
 
   @override
   Widget build(BuildContext context) {
+    final chatBadge = ref.watch(chatUnreadCountProvider);
+    final eventsBadge = ref.watch(eventsUnviewedCountProvider);
+
     return TabScaffold(
       currentIndex: _currentIndex,
+      chatBadgeCount: chatBadge,
+      eventsBadgeCount: eventsBadge,
       onTabSelected: (index) {
         setState(() {
           _currentIndex = index;
         });
+        if (index == 1) {
+          _markChatRead(ref);
+        }
         switch (index) {
           case 0:
             context.go('/shell/home');
@@ -194,6 +204,15 @@ class _MainShellWithNavigationState extends ConsumerState<_MainShellWithNavigati
       ],
     );
   }
+}
+
+void _markChatRead(WidgetRef ref) {
+  final user = ref.read(currentUserProvider);
+  if (user == null) return;
+  ref.read(firestoreProvider).collection('users').doc(user.uid).set(
+    {'chatLastReadAt': FieldValue.serverTimestamp()},
+    SetOptions(merge: true),
+  );
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -376,6 +395,18 @@ final routerProvider = Provider<GoRouter>((ref) {
           return null;
         },
         builder: (ctx, _) => const RoseAwardsVotingScreen(),
+      ),
+      GoRoute(
+        path: '/notifications',
+        redirect: (ctx, state) {
+          final auth = ref.read(authStateChangesProvider);
+          if (auth.isLoading) return null;
+          if (auth.value == null) return '/login';
+          final role = ref.read(userRoleProvider);
+          if (role != 'master') return '/shell/home';
+          return null;
+        },
+        builder: (ctx, _) => const NotificationsScreen(),
       ),
       ShellRoute(
         builder: (ctx, state, child) => MainShell(child: child),

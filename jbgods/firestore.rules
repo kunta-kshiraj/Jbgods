@@ -276,6 +276,16 @@ service cloud.firestore {
       allow read: if signedIn();
       allow update, delete: if false;
     }
+
+    // IN-APP NOTIFICATIONS (created by Cloud Functions; users read/update their own)
+    // Support both recipientUid and legacy userId for compatibility
+    match /notifications/{id} {
+      allow read, update: if signedIn() &&
+        (resource.data.recipientUid == request.auth.uid || resource.data.userId == request.auth.uid);
+      allow create: if false;
+      allow delete: if signedIn() &&
+        (resource.data.recipientUid == request.auth.uid || resource.data.userId == request.auth.uid);
+    }
   }
 }
 

@@ -1,1 +1,1 @@
-{"indexes":[{"collectionGroup":"event_requests","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"requestedAt","order":"DESCENDING"}]}],"fieldOverrides":[]}
+{"indexes":[{"collectionGroup":"event_requests","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"requestedAt","order":"DESCENDING"}]},{"collectionGroup":"notifications","queryScope":"COLLECTION","fields":[{"fieldPath":"recipientUid","order":"ASCENDING"},{"fieldPath":"createdAt","order":"DESCENDING"}]}],"fieldOverrides":[]}

@@ -22,7 +22,12 @@ class AdminRequestsScreen extends ConsumerWidget {
       );
     }
 
+    // Open Owner Requests tab when coming from notification (?tab=owner)
+    final tabParam = GoRouterState.of(context).uri.queryParameters['tab'];
+    final initialTabIndex = (tabParam == 'owner') ? 1 : 0;
+
     return DefaultTabController(
+      initialIndex: initialTabIndex,
       length: 2,
       child: Scaffold(
         appBar: AppBar(

@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'package:go_router/go_router.dart';
+
 import '../../widgets/header_logo.dart';
 import '../../data/auth_providers.dart';
 import '../../data/firestore_streams.dart';
@@ -17,6 +19,8 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final eventsStream = ref.watch(eventsQueryProvider);
     final isAdmin = ref.watch(isAdminProvider);
+    final isMaster = ref.watch(userRoleProvider) == 'master';
+    final unreadCount = ref.watch(unreadNotificationsCountProvider);
 
     return Scaffold(
       floatingActionButton: isAdmin
@@ -33,7 +37,43 @@ class HomeScreen extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
             child: Column(
               children: [
-                const HeaderLogo(),
+                Row(
+                  children: [
+                    const Expanded(child: HeaderLogo()),
+                    if (isMaster)
+                      Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.notifications_outlined),
+                            onPressed: () => context.push('/notifications'),
+                          ),
+                          if (unreadCount > 0)
+                            Positioned(
+                              right: 4,
+                              top: 4,
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: const BoxDecoration(
+                                  color: Colors.red,
+                                  shape: BoxShape.circle,
+                                ),
+                                constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                                child: Text(
+                                  unreadCount > 99 ? '99+' : '$unreadCount',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                  ],
+                ),
                 const SizedBox(height: 5),
                 Text(
                   "Upcoming Events/Updates",

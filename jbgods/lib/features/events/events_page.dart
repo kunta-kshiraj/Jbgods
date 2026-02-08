@@ -112,6 +112,30 @@ class _EventsPageState extends ConsumerState<EventsPage> {
     });
   }
 
+  /// Mark an event as viewed (for nav bar badge)
+  Future<void> _markEventViewed(String eventId) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    await FirebaseFirestore.instance.collection('users').doc(user.uid).set(
+      {'viewedEventIds': FieldValue.arrayUnion([eventId])},
+      SetOptions(merge: true),
+    );
+  }
+
+  /// Mark all events for a day as viewed when user selects that date
+  Future<void> _markEventsForDayViewed(DateTime day) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final eventsOnDay = _getEventsForDay(day);
+    if (eventsOnDay.isEmpty) return;
+    final ids = eventsOnDay.map((e) => e['id'] as String).where((id) => id.isNotEmpty).toList();
+    if (ids.isEmpty) return;
+    await FirebaseFirestore.instance.collection('users').doc(user.uid).set(
+      {'viewedEventIds': FieldValue.arrayUnion(ids)},
+      SetOptions(merge: true),
+    );
+  }
+
   List<Map<String, dynamic>> _getEventsForDay(DateTime day) {
     return _events
         .where((e) {
@@ -150,6 +174,7 @@ class _EventsPageState extends ConsumerState<EventsPage> {
                 _selectedDay = selectedDay;
                 _focusedDay = focusedDay;
               });
+              _markEventsForDayViewed(selectedDay);
             },
             calendarStyle: CalendarStyle(
               todayDecoration: BoxDecoration(
@@ -274,6 +299,7 @@ class _EventsPageState extends ConsumerState<EventsPage> {
         final actionsAllowed = canEditOrDelete && canShowActions;
         
         return GestureDetector(
+          onTap: () => _markEventViewed(eventId),
           onLongPress: actionsAllowed
               ? () => _showEventActions(context, e)
               : null,
@@ -421,6 +447,7 @@ class _EventsPageState extends ConsumerState<EventsPage> {
 
                         return ElevatedButton(
                           onPressed: () async {
+                            _markEventViewed(e['id'] as String);
                             final result = await Navigator.push(
                               context,
                               MaterialPageRoute(

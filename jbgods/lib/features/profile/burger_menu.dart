@@ -30,10 +30,20 @@ class BurgerMenuSheet extends ConsumerWidget {
   
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isMaster = ref.watch(userRoleProvider) == 'master';
     return SafeArea(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (isMaster)
+            ListTile(
+              leading: const Icon(Icons.notifications_outlined),
+              title: const Text("Notifications"),
+              onTap: () {
+                Navigator.pop(context);
+                context.push('/notifications');
+              },
+            ),
           ListTile(
             leading: Icon(Icons.edit),
             title: Text("Edit Profile"),

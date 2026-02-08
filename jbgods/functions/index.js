@@ -394,6 +394,158 @@ exports.sendRoseAwardsSubscriptionEmail = functions.https.onCall(async (data, co
   }
 });
 
+// ---------- IN-APP NOTIFICATIONS ----------
+const db = admin.firestore();
+
+async function getUserIdsByRole(role) {
+  const snap = await db.collection('users').where('role', '==', role).get();
+  return snap.docs.map(d => d.id);
+}
+
+async function getMasters() { return getUserIdsByRole('master'); }
+async function getAdmins() { return getUserIdsByRole('admin'); }
+async function getMembers() { return getUserIdsByRole('member'); }
+async function getOwners() { return getUserIdsByRole('owner'); }
+
+const BATCH_SIZE = 400; // Firestore batch limit is 500
+
+async function notifyUsers(userIds, { type, title, body, data }) {
+  if (!userIds.length) return;
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const payload = {
+    type: type || 'general',
+    title: title || 'Notification',
+    body: body || '',
+    data: data || {},
+    createdAt: now,
+    read: false,
+  };
+  for (let i = 0; i < userIds.length; i += BATCH_SIZE) {
+    const chunk = userIds.slice(i, i + BATCH_SIZE);
+    const batch = db.batch();
+    for (const uid of chunk) {
+      const ref = db.collection('notifications').doc();
+      batch.set(ref, { ...payload, recipientUid: uid });
+    }
+    await batch.commit();
+  }
+}
+
+// 1a. New user request (member approval) → notify masters only
+exports.onRequestCreated = functions.firestore.document('requests/{uid}').onCreate(async (snap) => {
+  const masters = await getMasters();
+  await notifyUsers(masters, {
+    type: 'user_request',
+    title: 'New User Request',
+    body: 'You have a new user request pending approval.',
+    data: { requestId: snap.id },
+  });
+});
+
+// 1b. User re-applies after rejection (status rejected → pending) → notify masters again
+exports.onRequestUpdated = functions.firestore.document('requests/{uid}').onUpdate((change, context) => {
+  const before = change.before.data() || {};
+  const after = change.after.data() || {};
+  if (before.status !== 'rejected' || after.status !== 'pending') return null;
+  return getMasters().then((masters) =>
+    notifyUsers(masters, {
+      type: 'user_request',
+      title: 'New User Request',
+      body: 'You have a new user request pending approval.',
+      data: { requestId: context.params.uid },
+    })
+  );
+});
+
+// 2. New skating rink owner request → notify masters only
+exports.onOwnerRequestCreated = functions.firestore.document('owner_requests/{uid}').onCreate(async (snap) => {
+  const masters = await getMasters();
+  await notifyUsers(masters, {
+    type: 'owner_request',
+    title: 'New Skating Rink Owner Request',
+    body: 'A skating rink owner has requested approval.',
+    data: { ownerRequestId: snap.id },
+  });
+});
+
+// 3. New update → notify masters only
+exports.onUpdateCreated = functions.firestore.document('updates/{id}').onCreate(async (snap) => {
+  const masters = await getMasters();
+  await notifyUsers(masters, {
+    type: 'update',
+    title: 'New Event Request',
+    body: 'A new event request has been submitted for review.',
+    data: { updateId: snap.id },
+  });
+});
+
+// 4a. New event (after approval) → notify masters only
+exports.onEventCreated = functions.firestore.document('events/{id}').onCreate(async (snap) => {
+  const masters = await getMasters();
+  await notifyUsers(masters, {
+    type: 'event',
+    title: 'New Event Request',
+    body: 'A new event request has been submitted for review.',
+    data: { eventId: snap.id },
+  });
+});
+
+// 4b. New event request (pending approval) → notify masters only
+exports.onEventRequestCreated = functions.firestore.document('event_requests/{id}').onCreate(async (snap) => {
+  const masters = await getMasters();
+  await notifyUsers(masters, {
+    type: 'event_request',
+    title: 'New Event Request',
+    body: 'A new event request has been submitted for review.',
+    data: { eventRequestId: snap.id },
+  });
+});
+
+// 5. New report → notify masters only
+exports.onReportCreated = functions.firestore.document('reports/{id}').onCreate(async (snap) => {
+  const masters = await getMasters();
+  await notifyUsers(masters, {
+    type: 'report',
+    title: 'New Report Submitted',
+    body: 'A new report has been submitted. Please review it.',
+    data: { reportId: snap.id },
+  });
+});
+
+// 6. Admin submitted skating rink listing for approval → notify masters only
+exports.onRinkListingCreated = functions.firestore.document('rink_listings/{id}').onCreate(async (snap) => {
+  const data = snap.data() || {};
+  if (data.status !== 'pending' || data.addedByRole !== 'admin') return;
+  const masters = await getMasters();
+  await notifyUsers(masters, {
+    type: 'rink_listing_pending',
+    title: 'New Skating Rink Listing Request',
+    body: 'An admin has submitted a skating rink for approval.',
+    data: { rinkListingId: snap.id },
+  });
+});
+
+// 7. Chat messages: no in-app notifications (masters-only feature; admins/normal users get none)
+exports.onMessageCreated = functions.firestore.document('messages/{id}').onCreate(() => {
+  return null; // no notifications
+});
+
+// 8. Delete notifications older than 3 days (run daily)
+exports.cleanupOldNotifications = functions.pubsub.schedule('0 2 * * *').timeZone('UTC').onRun(async () => {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 3);
+  const cutoffTimestamp = admin.firestore.Timestamp.fromDate(cutoff);
+  const snap = await db.collection('notifications')
+    .where('createdAt', '<', cutoffTimestamp)
+    .limit(500)
+    .get();
+  if (snap.empty) return null;
+  const batch = db.batch();
+  snap.docs.forEach(d => batch.delete(d.ref));
+  await batch.commit();
+  return null;
+});
+
 // Cloud Function to send Rink Owner subscription confirmation email
 exports.sendRinkOwnerSubscriptionEmail = functions.https.onCall(async (data, context) => {
   // Verify user is authenticated
