@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../services/stripe_service.dart';
 import '../../data/auth_providers.dart';
 import '../../widgets/terms_conditions_dialog.dart';
+import 'my_pass_screen.dart';
 
 class EnrollScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic> event;
@@ -145,24 +147,157 @@ class _EnrollScreenState extends ConsumerState<EnrollScreen> {
                     ],
                   ),
                   const SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: () {
-                      if (!_formKey.currentState!.validate()) return;
-                      if (!_agree) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Please agree to the terms first')),
+                  if (cost > 0)
+                    ElevatedButton(
+                      onPressed: () {
+                        if (!_formKey.currentState!.validate()) return;
+                        if (!_agree) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Please agree to the terms first')),
+                          );
+                          return;
+                        }
+                        setState(() => _showPayment = true);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(double.infinity, 48),
+                      ),
+                      child: const Text('Continue'),
+                    )
+                  else
+                    ElevatedButton(
+                      onPressed: () async {
+                        if (!_formKey.currentState!.validate()) return;
+                        if (!_agree) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Please agree to the terms first')),
+                          );
+                          return;
+                        }
+                        final user = FirebaseAuth.instance.currentUser;
+                        if (user == null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Please log in to continue'), backgroundColor: Colors.red),
+                          );
+                          return;
+                        }
+                        showDialog(
+                          context: context,
+                          barrierDismissible: false,
+                          builder: (context) => const Center(
+                            child: Card(
+                              child: Padding(
+                                padding: EdgeInsets.all(24),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    CircularProgressIndicator(),
+                                    SizedBox(height: 16),
+                                    Text('Confirming your ticket...'),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
                         );
-                        return;
-                      }
-                      setState(() => _showPayment = true);
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size(double.infinity, 48),
+                        try {
+                          final firestore = FirebaseFirestore.instance;
+                          final existing = await firestore
+                              .collection('registrations')
+                              .where('eventId', isEqualTo: widget.event['id'])
+                              .where('userId', isEqualTo: user.uid)
+                              .limit(1)
+                              .get();
+                          if (existing.docs.isNotEmpty) {
+                            if (mounted) Navigator.of(context).pop();
+                            if (mounted) {
+                              showDialog(
+                                context: context,
+                                builder: (_) => AlertDialog(
+                                  title: const Text('Already Registered'),
+                                  content: const Text('You have already registered for this event.'),
+                                  actions: [
+                                    TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+                                  ],
+                                ),
+                              );
+                            }
+                            return;
+                          }
+                          final registrationData = {
+                            'eventId': widget.event['id'],
+                            'eventTitle': widget.event['title'],
+                            'userId': user.uid,
+                            'fullName': _nameCtrl.text.trim(),
+                            'email': _emailCtrl.text.trim(),
+                            'agreedToTerms': _agree,
+                            'amountPaid': 0.0,
+                            'paymentStatus': 'completed',
+                            'emailSent': false,
+                            'createdAt': FieldValue.serverTimestamp(),
+                          };
+                          final registrationRef = await firestore.collection('registrations').add(registrationData);
+                          final registrationId = registrationRef.id;
+                          // Create pass via Cloud Function (avoids client permission-denied on event_registrations)
+                          final functions = ref.read(firebaseFunctionsProvider);
+                          await functions.httpsCallable('createEventPassFromRegistration').call({
+                            'registrationId': registrationId,
+                          });
+                          try {
+                            String? eventDateStr;
+                            final eventDate = widget.event['date'];
+                            if (eventDate != null) {
+                              if (eventDate is Timestamp) {
+                                eventDateStr = eventDate.toDate().toIso8601String();
+                              } else if (eventDate is DateTime) {
+                                eventDateStr = eventDate.toIso8601String();
+                              } else {
+                                eventDateStr = eventDate.toString();
+                              }
+                            }
+                            await functions.httpsCallable('sendEventRegistrationEmail').call({
+                              'registrationId': registrationRef.id,
+                              'email': _emailCtrl.text.trim(),
+                              'fullName': _nameCtrl.text.trim(),
+                              'eventTitle': widget.event['title'],
+                              'eventDate': eventDateStr,
+                              'eventLocation': widget.event['location'],
+                              'amountPaid': 0.0,
+                            });
+                          } catch (emailError) {
+                            debugPrint('Failed to send email: $emailError');
+                            await registrationRef.update({'emailSent': false, 'emailError': emailError.toString()});
+                          }
+                          if (mounted) {
+                            Navigator.of(context).pop();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Ticket confirmed! Taking you to your pass…'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                            Navigator.pop(context, true);
+                            await Future.delayed(const Duration(milliseconds: 500));
+                            if (mounted) context.push('/event-pass/$registrationId');
+                          }
+                        } catch (e) {
+                          if (mounted) Navigator.of(context).pop();
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Could not confirm: $e'), backgroundColor: Colors.red),
+                            );
+                          }
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(double.infinity, 48),
+                      ),
+                      child: const Text('Confirm registration'),
                     ),
-                    child: const Text('Continue'),
-                  ),
                 ] else ...[
                   // Payment Section
                   Container(
@@ -238,6 +373,7 @@ class _EnrollScreenState extends ConsumerState<EnrollScreen> {
                         ),
                       );
 
+                      bool showedSettingUpDialog = false;
                       try {
                         final stripeService = ref.read(stripePaymentServiceProvider);
                         final themeMode = isDark ? ThemeMode.dark : ThemeMode.light;
@@ -256,10 +392,35 @@ class _EnrollScreenState extends ConsumerState<EnrollScreen> {
                         // Present payment sheet
                         await stripeService.presentPaymentSheet();
 
+                        // Show loading while creating registration and pass
+                        if (mounted) {
+                          showedSettingUpDialog = true;
+                          showDialog(
+                            context: context,
+                            barrierDismissible: false,
+                            builder: (context) => const Center(
+                              child: Card(
+                                child: Padding(
+                                  padding: EdgeInsets.all(24),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      CircularProgressIndicator(),
+                                      SizedBox(height: 16),
+                                      Text('Setting up your pass...'),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }
+
                         // Payment successful - register user for event
                         final user = FirebaseAuth.instance.currentUser;
                         if (user == null) {
                           if (mounted) {
+                            Navigator.of(context).pop(); // dismiss "Setting up your pass..."
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text('Please log in to continue'),
@@ -281,6 +442,7 @@ class _EnrollScreenState extends ConsumerState<EnrollScreen> {
 
                         if (existing.docs.isNotEmpty) {
                           if (mounted) {
+                            Navigator.of(context).pop(); // dismiss "Setting up your pass..."
                             showDialog(
                               context: context,
                               builder: (_) => AlertDialog(
@@ -312,12 +474,18 @@ class _EnrollScreenState extends ConsumerState<EnrollScreen> {
                           'emailSent': false, // Track if email was sent
                           'createdAt': FieldValue.serverTimestamp(),
                         };
-                        
+
                         final registrationRef = await firestore.collection('registrations').add(registrationData);
+                        final registrationId = registrationRef.id;
+
+                        // Create event pass via Cloud Function (avoids client permission-denied on event_registrations)
+                        final functions = ref.read(firebaseFunctionsProvider);
+                        await functions.httpsCallable('createEventPassFromRegistration').call({
+                          'registrationId': registrationId,
+                        });
 
                         // Trigger email sending via Cloud Function
                         try {
-                          final functions = ref.read(firebaseFunctionsProvider);
                           // Format date properly for Cloud Function
                           String? eventDateStr;
                           final eventDate = widget.event['date'];
@@ -349,26 +517,58 @@ class _EnrollScreenState extends ConsumerState<EnrollScreen> {
                         }
 
                         if (mounted) {
+                          Navigator.of(context).pop(); // dismiss "Setting up your pass..."
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              content: Text('✅ Payment successful! You are now enrolled. Confirmation email sent.'),
+                              content: Text('✅ Payment successful! Taking you to your pass…'),
                               backgroundColor: Colors.green,
                             ),
                           );
-                          Navigator.pop(context, true); // Return true to indicate successful enrollment
+                          Navigator.pop(context, true);
+                          await Future.delayed(const Duration(milliseconds: 500));
+                          if (mounted) context.push('/event-pass/$registrationId');
                         }
                       } catch (e) {
-                        // Dismiss loading indicator if still showing
-                        if (mounted) Navigator.pop(context);
+                        // Dismiss "Setting up your pass..." dialog only if we showed it (after payment succeeded)
+                        if (mounted && showedSettingUpDialog) Navigator.of(context).pop();
 
                         if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Payment failed: ${e.toString()}'),
-                              backgroundColor: Colors.red,
-                              duration: const Duration(seconds: 4),
-                            ),
-                          );
+                          if (showedSettingUpDialog) {
+                            // Payment actually succeeded; the failure was during registration/pass setup
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: const Text(
+                                  'Your payment went through. Go to Events and tap "View Pass" — or use "Create my pass" on the next screen if you see it.',
+                                ),
+                                backgroundColor: Colors.green,
+                                duration: const Duration(seconds: 6),
+                              ),
+                            );
+                            // Navigate to pass screen if we have a registration (so user can try "Create my pass")
+                            final uid = FirebaseAuth.instance.currentUser?.uid;
+                            final eventId = widget.event['id'];
+                            if (uid != null && eventId != null) {
+                              FirebaseFirestore.instance
+                                  .collection('registrations')
+                                  .where('eventId', isEqualTo: eventId)
+                                  .where('userId', isEqualTo: uid)
+                                  .limit(1)
+                                  .get()
+                                  .then((existing) {
+                                if (existing.docs.isNotEmpty && mounted) {
+                                  context.push('/event-pass/${existing.docs.first.id}');
+                                }
+                              });
+                            }
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Payment failed: ${e.toString()}'),
+                                backgroundColor: Colors.red,
+                                duration: const Duration(seconds: 4),
+                              ),
+                            );
+                          }
                         }
                       }
                     },

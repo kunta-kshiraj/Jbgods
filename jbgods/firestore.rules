@@ -192,6 +192,26 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // EVENT REGISTRATIONS (event pass + QR check-in)
+    // Clients cannot update checkedIn/checkedInAt/checkedInByUid (only Cloud Function)
+    match /event_registrations/{registrationId} {
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.eventId is string
+        && request.resource.data.paymentStatus == 'paid'
+        && request.resource.data.passCode is string;
+
+      allow read: if signedIn() && (
+        resource.data.userId == request.auth.uid
+        || isMaster()
+        || get(/databases/$(db)/documents/events/$(resource.data.eventId)).data.createdBy == request.auth.uid
+        || get(/databases/$(db)/documents/events/$(resource.data.eventId)).data.createdByUid == request.auth.uid
+      );
+
+      allow update: if false;
+      allow delete: if false;
+    }
+
     // RINKS COLLECTION
     match /rinks/{uid} {
       // Owners can read their own rink, admins can read all
@@ -283,8 +303,11 @@ service cloud.firestore {
       allow read, update: if signedIn() &&
         (resource.data.recipientUid == request.auth.uid || resource.data.userId == request.auth.uid);
       allow create: if false;
-      allow delete: if signedIn() &&
-        (resource.data.recipientUid == request.auth.uid || resource.data.userId == request.auth.uid);
+      allow delete: if signedIn() && (
+        resource.data.recipientUid == request.auth.uid
+        || resource.data.userId == request.auth.uid
+        || isMaster()
+      );
     }
   }
 }

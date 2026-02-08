@@ -1436,7 +1436,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
             ],
 
-            // Show "Event Participants" for master, admins, and owners with active subscription
+            // Show "Event Participants" and "Checked in users" for master, admins, and owners with active subscription
             if (isMaster || (isAdmin && !isOwner)) ...[
               // Master and non-owner admins always see this
               const SizedBox(height: 12),
@@ -1456,6 +1456,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                   );
                 },
+              ),
+              const SizedBox(height: 12),
+              JBButton(
+                label: "Checked in users",
+                onPressed: () => context.push('/shell/checked-in-users'),
               ),
             ] else if (isOwner) ...[
               // Owners only see this if they have active subscription
@@ -1494,6 +1499,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                               ),
                             );
                           },
+                        ),
+                        const SizedBox(height: 12),
+                        JBButton(
+                          label: "Checked in users",
+                          onPressed: () => context.push('/shell/checked-in-users'),
                         ),
                       ],
                     );

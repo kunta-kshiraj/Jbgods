@@ -15,6 +15,9 @@ import 'features/auth/forgot_password_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/chat/chat_screen.dart';
 import 'features/events/events_page.dart';
+import 'features/events/my_pass_screen.dart';
+import 'features/events/scan_pass_screen.dart';
+import 'features/events/checked_in_users_screen.dart';
 import 'features/rinks/rinks_screen.dart';
 import 'features/rinks/rink_list_screen.dart';
 import 'features/rinks/add_rink_listing_screen.dart';
@@ -124,6 +127,9 @@ class MainShell extends ConsumerWidget {
   }
 }
 
+/// Routes that are "sub-pages" (pushed on top of a tab) and should show the [child] widget.
+const _shellSubRoutes = ['/shell/checked-in-users'];
+
 class _MainShellWithNavigation extends ConsumerStatefulWidget {
   final Widget child;
   const _MainShellWithNavigation({required this.child});
@@ -163,6 +169,12 @@ class _MainShellWithNavigationState extends ConsumerState<_MainShellWithNavigati
 
   @override
   Widget build(BuildContext context) {
+    final location = GoRouterState.of(context).uri.toString();
+    final isSubRoute = _shellSubRoutes.any((path) => location.startsWith(path));
+    if (isSubRoute) {
+      return widget.child;
+    }
+
     final chatBadge = ref.watch(chatUnreadCountProvider);
     final eventsBadge = ref.watch(eventsUnviewedCountProvider);
 
@@ -397,6 +409,23 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (ctx, _) => const RoseAwardsVotingScreen(),
       ),
       GoRoute(
+        path: '/event-pass/:registrationId',
+        builder: (ctx, state) {
+          final id = state.pathParameters['registrationId'] ?? '';
+          final Map<String, dynamic>? initialPassData = state.extra != null && state.extra is Map
+              ? Map<String, dynamic>.from(state.extra as Map)
+              : null;
+          return MyPassScreen(registrationId: id, initialPassData: initialPassData);
+        },
+      ),
+      GoRoute(
+        path: '/scan-pass/:eventId',
+        builder: (ctx, state) {
+          final eventId = state.pathParameters['eventId'] ?? '';
+          return ScanPassScreen(eventId: eventId);
+        },
+      ),
+      GoRoute(
         path: '/notifications',
         redirect: (ctx, state) {
           final auth = ref.read(authStateChangesProvider);
@@ -426,6 +455,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/shell/events',
             builder: (ctx, _) => const EventsPage(),
+          ),
+          GoRoute(
+            path: '/shell/checked-in-users',
+            builder: (ctx, _) => const CheckedInUsersScreen(),
           ),
           GoRoute(
             path: '/shell/rinks',

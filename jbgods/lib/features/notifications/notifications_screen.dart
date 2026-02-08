@@ -14,6 +14,7 @@ class NotificationsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final notificationsStream = ref.watch(notificationsQueryProvider);
+    final isMaster = ref.watch(userRoleProvider) == 'master';
 
     return Scaffold(
       appBar: AppBar(
@@ -53,6 +54,7 @@ class NotificationsScreen extends ConsumerWidget {
                 type: data['type'] as String?,
                 read: data['read'] == true,
                 createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
+                canDelete: isMaster,
               );
             },
           );
@@ -72,6 +74,7 @@ class _NotificationTile extends ConsumerWidget {
     this.type,
     required this.read,
     this.createdAt,
+    this.canDelete = false,
   });
 
   final String notificationId;
@@ -80,6 +83,7 @@ class _NotificationTile extends ConsumerWidget {
   final String? type;
   final bool read;
   final DateTime? createdAt;
+  final bool canDelete;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -134,6 +138,17 @@ class _NotificationTile extends ConsumerWidget {
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: read ? Colors.grey : Colors.black87,
                       ),
+                    ),
+                  if (canDelete)
+                    IconButton(
+                      icon: Icon(Icons.delete_outline, size: 20, color: theme.colorScheme.error),
+                      onPressed: () async {
+                        try {
+                          await firestore.collection('notifications').doc(notificationId).delete();
+                        } catch (_) {}
+                      },
+                      padding: const EdgeInsets.all(4),
+                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                     ),
                 ],
               ),

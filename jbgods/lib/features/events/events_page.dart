@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'enroll_screen.dart';
 import '../../widgets/jb_input.dart';
 import '../../widgets/jb_button.dart';
@@ -434,14 +435,26 @@ class _EventsPageState extends ConsumerState<EventsPage> {
 
                         if (enrolled) {
                           return ElevatedButton(
-                            onPressed: null,
+                            onPressed: () async {
+                              final user = ref.read(currentUserProvider);
+                              if (user == null) return;
+                              final regSnap = await ref.read(firestoreProvider)
+                                  .collection('registrations')
+                                  .where('eventId', isEqualTo: e['id'])
+                                  .where('userId', isEqualTo: user.uid)
+                                  .limit(1)
+                                  .get();
+                              if (regSnap.docs.isNotEmpty && mounted) {
+                                context.push('/event-pass/${regSnap.docs.first.id}');
+                              }
+                            },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.grey,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
                               ),
                             ),
-                            child: const Text("Enrolled"),
+                            child: const Text("View Pass"),
                           );
                         }
 
@@ -475,6 +488,122 @@ class _EventsPageState extends ConsumerState<EventsPage> {
                     )
                   : const SizedBox.shrink(),
             ),
+            if (canEditOrDelete) ...[
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  color: isDark ? bodyColor : footColor,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          await context.push('/scan-pass/${e['id']}');
+                          if (mounted) setState(() => _refreshKey++);
+                        },
+                        icon: const Icon(Icons.qr_code_scanner, size: 20),
+                        label: const Text('Scan Pass'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: theme.colorScheme.primary,
+                          side: BorderSide(color: theme.colorScheme.primary),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text(
+                        'Checked-in',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: textColor,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    StreamBuilder<QuerySnapshot>(
+                      key: ValueKey('checkin_${e['id']}_$_refreshKey'),
+                      stream: FirebaseFirestore.instance
+                          .collection('event_registrations')
+                          .where('eventId', isEqualTo: e['id'] is String ? e['id'] as String : e['id'].toString())
+                          .where('checkedIn', isEqualTo: true)
+                          .snapshots(),
+                      builder: (context, checkSnap) {
+                        if (checkSnap.hasError) {
+                          final err = checkSnap.error;
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            child: Text(
+                              'Check-ins: ${err is Exception ? err.toString().replaceFirst('Exception: ', '') : err}',
+                              style: TextStyle(color: Colors.orange.shade800, fontSize: 12),
+                            ),
+                          );
+                        }
+                        if (!checkSnap.hasData) {
+                          return const Padding(
+                            padding: EdgeInsets.all(8),
+                            child: Center(child: SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+                          );
+                        }
+                        var docs = checkSnap.data!.docs;
+                        docs = List.from(docs)
+                          ..sort((a, b) {
+                            final atA = (a.data() as Map<String, dynamic>)['checkedInAt'] as Timestamp?;
+                            final atB = (b.data() as Map<String, dynamic>)['checkedInAt'] as Timestamp?;
+                            if (atA == null && atB == null) return 0;
+                            if (atA == null) return 1;
+                            if (atB == null) return -1;
+                            return atB.toDate().compareTo(atA.toDate());
+                          });
+                        if (docs.isEmpty) {
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            child: Text(
+                              'No check-ins yet',
+                              style: TextStyle(color: textColor.withValues(alpha: 0.7), fontSize: 13),
+                            ),
+                          );
+                        }
+                        return ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: docs.length,
+                          itemBuilder: (context, i) {
+                            final d = docs[i].data() as Map<String, dynamic>;
+                            final name = (d['userName'] as String?)?.trim().isNotEmpty == true
+                                ? (d['userName'] as String).trim()
+                                : (d['fullName'] as String?)?.trim().isNotEmpty == true
+                                    ? (d['fullName'] as String).trim()
+                                    : (d['userEmail'] as String?)?.trim().isNotEmpty == true
+                                        ? (d['userEmail'] as String).trim()
+                                        : 'Attendee';
+                            final email = (d['userEmail'] as String?)?.trim() ?? '';
+                            final at = d['checkedInAt'] as Timestamp?;
+                            final timeStr = at != null
+                                ? DateFormat('MMM d, h:mm a').format(at.toDate().toLocal())
+                                : '';
+                            final subtitle = [if (email.isNotEmpty) email, if (timeStr.isNotEmpty) timeStr].join(' • ');
+                            return ListTile(
+                              dense: true,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                              leading: Icon(Icons.check_circle, color: Colors.green.shade700, size: 22),
+                              title: Text(name, style: TextStyle(color: textColor, fontSize: 14, fontWeight: FontWeight.w500)),
+                              subtitle: subtitle.isNotEmpty ? Text(subtitle, style: TextStyle(color: textColor.withValues(alpha: 0.7), fontSize: 12)) : null,
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -609,6 +738,9 @@ class _EventsPageState extends ConsumerState<EventsPage> {
     }
 
 
+  // Delimiter for address parts so empty fields (e.g. address2) round-trip correctly when editing
+  static const String _addressDelimiter = ' | ';
+
   // Helper function to parse location string into address components
   Map<String, String> _parseLocation(String? location) {
     if (location == null || location.isEmpty) {
@@ -621,20 +753,33 @@ class _EventsPageState extends ConsumerState<EventsPage> {
         'country': '',
       };
     }
-    
-    // Try to parse comma-separated address
-    final parts = location.split(',').map((e) => e.trim()).toList();
+    // Parse delimiter-separated address (fixed 6 fields so edit form loads correctly)
+    List<String> parts = location.split(_addressDelimiter).map((e) => e.trim()).toList();
+    // Support legacy comma-separated format (no " | " in string)
+    if (parts.length == 1 && parts[0].contains(',')) {
+      final legacy = location.split(',').map((e) => e.trim()).toList();
+      // Legacy: 5 parts = street, city, state, zip, country (no address2); 6 = all fields
+      if (legacy.length == 5) {
+        parts = [legacy[0], '', legacy[1], legacy[2], legacy[3], legacy[4]];
+      } else if (legacy.length >= 6) {
+        parts = legacy.sublist(0, 6);
+      } else {
+        while (legacy.length < 6) legacy.add('');
+        parts = legacy;
+      }
+    }
+    while (parts.length < 6) parts.add('');
     return {
-      'street': parts.isNotEmpty ? parts[0] : '',
-      'address2': parts.length > 1 ? parts[1] : '',
-      'city': parts.length > 2 ? parts[2] : '',
-      'state': parts.length > 3 ? parts[3] : '',
-      'zip': parts.length > 4 ? parts[4] : '',
-      'country': parts.length > 5 ? parts[5] : '',
+      'street': parts[0],
+      'address2': parts[1],
+      'city': parts[2],
+      'state': parts[3],
+      'zip': parts[4],
+      'country': parts[5],
     };
   }
 
-  // Helper function to combine address fields into location string
+  // Helper function to combine address fields into location string (always 6 fields for correct re-parsing)
   String _combineAddress({
     required String street,
     required String address2,
@@ -643,14 +788,15 @@ class _EventsPageState extends ConsumerState<EventsPage> {
     required String zip,
     required String country,
   }) {
-    final parts = <String>[];
-    if (street.isNotEmpty) parts.add(street);
-    if (address2.isNotEmpty) parts.add(address2);
-    if (city.isNotEmpty) parts.add(city);
-    if (state.isNotEmpty) parts.add(state);
-    if (zip.isNotEmpty) parts.add(zip);
-    if (country.isNotEmpty) parts.add(country);
-    return parts.join(', ');
+    final parts = [
+      street.trim(),
+      address2.trim(),
+      city.trim(),
+      state.trim(),
+      zip.trim(),
+      country.trim(),
+    ];
+    return parts.join(_addressDelimiter);
   }
 
   void _showCreateOrEditSheet(BuildContext context, {Map<String, dynamic>? event}) {

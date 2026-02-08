@@ -546,7 +546,130 @@ exports.cleanupOldNotifications = functions.pubsub.schedule('0 2 * * *').timeZon
   return null;
 });
 
-// Cloud Function to send Rink Owner subscription confirmation email
+// Event pass check-in (callable)
+exports.checkInEventPass = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Must be signed in');
+  }
+  const { rid, code } = data || {};
+  if (!rid || !code) {
+    throw new functions.https.HttpsError('invalid-argument', 'Missing rid or code');
+  }
+
+  const regRef = db.collection('event_registrations').doc(rid);
+  const regSnap = await regRef.get();
+  if (!regSnap.exists) {
+    return { ok: false, message: 'Invalid pass' };
+  }
+
+  const reg = regSnap.data();
+  if (reg.paymentStatus !== 'paid') {
+    return { ok: false, message: 'Pass not paid' };
+  }
+  if (reg.passCode !== code) {
+    return { ok: false, message: 'Invalid QR code' };
+  }
+  if (reg.checkedIn === true) {
+    return { ok: false, message: 'Already checked in', alreadyCheckedIn: true };
+  }
+
+  const eventId = reg.eventId;
+  const eventSnap = await db.collection('events').doc(eventId).get();
+  if (!eventSnap.exists) {
+    return { ok: false, message: 'Event not found' };
+  }
+  const event = eventSnap.data();
+  const createdByUid = event.createdBy || event.createdByUid;
+  const callerUid = context.auth.uid;
+
+  const isMaster = await db.collection('users').doc(callerUid).get()
+    .then((d) => (d.data() || {}).role === 'master');
+  const isCreator = createdByUid === callerUid;
+
+  if (!isMaster && !isCreator) {
+    throw new functions.https.HttpsError('permission-denied', 'Not authorized to check in for this event');
+  }
+
+  const now = admin.firestore.Timestamp.now();
+  await regRef.update({
+    checkedIn: true,
+    checkedInAt: now,
+    checkedInByUid: callerUid,
+  });
+
+  return {
+    ok: true,
+    userName: reg.userName || 'Attendee',
+    checkedInAt: { _seconds: now.seconds, _nanoseconds: now.nanoseconds },
+  };
+});
+
+// Create event pass from registration (recovery when client create was denied)
+exports.createEventPassFromRegistration = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Must be signed in');
+  }
+  const { registrationId } = data || {};
+  if (!registrationId || typeof registrationId !== 'string') {
+    throw new functions.https.HttpsError('invalid-argument', 'Missing registrationId');
+  }
+
+  const regRef = db.collection('registrations').doc(registrationId);
+  const regSnap = await regRef.get();
+  if (!regSnap.exists) {
+    throw new functions.https.HttpsError('not-found', 'Registration not found');
+  }
+
+  const reg = regSnap.data();
+  if (reg.userId !== context.auth.uid) {
+    throw new functions.https.HttpsError('permission-denied', 'Not your registration');
+  }
+  const status = reg.paymentStatus || '';
+  if (status !== 'completed' && status !== 'paid') {
+    throw new functions.https.HttpsError('failed-precondition', 'Payment not completed');
+  }
+
+  const eventId = reg.eventId != null ? String(reg.eventId) : '';
+  if (!eventId) {
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid registration data');
+  }
+
+  const userName = reg.fullName || reg.userName || '';
+  const userEmail = reg.email || reg.userEmail || '';
+
+  const passRef = db.collection('event_registrations').doc(registrationId);
+  const existingPass = await passRef.get();
+
+  let passCode;
+  if (existingPass.exists && existingPass.data().passCode) {
+    passCode = existingPass.data().passCode;
+  } else {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    passCode = '';
+    for (let i = 0; i < 8; i++) {
+      passCode += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    await passRef.set({
+      eventId,
+      userId: context.auth.uid,
+      userName,
+      userEmail,
+      paymentStatus: 'paid',
+      passCode,
+      checkedIn: false,
+      checkedInAt: null,
+      checkedInByUid: null,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  }
+
+  return {
+    ok: true,
+    pass: { eventId, passCode, userName, userEmail },
+  };
+});
+
+// Cloud Function to send Rink Owner subscription email
 exports.sendRinkOwnerSubscriptionEmail = functions.https.onCall(async (data, context) => {
   // Verify user is authenticated
   if (!context.auth) {
