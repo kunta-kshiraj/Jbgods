@@ -7,6 +7,7 @@ import 'app_state.dart';
 import 'data/auth_providers.dart';
 import 'data/firestore_streams.dart';
 import 'services/iap_service.dart';
+import 'services/push_notification_service.dart';
 import 'features/splash/splash_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/signup_screen.dart';
@@ -228,7 +229,7 @@ void _markChatRead(WidgetRef ref) {
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
-  return GoRouter(
+  final goRouter = GoRouter(
     initialLocation: '/',
     refreshListenable: AuthStateNotifier(ref),
     redirect: (ctx, state) {
@@ -486,4 +487,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
     ],
   );
+  PushNotificationService.setRouter(goRouter);
+  return goRouter;
 });

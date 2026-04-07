@@ -10,6 +10,7 @@ import 'router.dart';
 import 'app_state.dart';
 import 'core/secret/stripe_keys.dart';
 import 'services/iap_service.dart';
+import 'services/push_notification_service.dart';
 
 // Future<void> renameCollection() async {
 //   final firestore = FirebaseFirestore.instance;
@@ -33,9 +34,19 @@ void main() async {
   );
 
   print("✅ Connected to Firebase project: ${Firebase.app().options.projectId}");
-  // await renameCollection();
 
-  
+  // Push notifications: permission, token, handlers (router set when app builds)
+  // Do not block startup on token or getInitialMessage (they can hang on some devices)
+  await PushNotificationService.init();
+  FirebaseAuth.instance.authStateChanges().listen((User? user) {
+    if (user != null) {
+      PushNotificationService.saveTokenForCurrentUser();
+    }
+  });
+  if (FirebaseAuth.instance.currentUser != null) {
+    PushNotificationService.saveTokenForCurrentUser();
+  }
+
   // Setup emulators if enabled
   const useEmulator = bool.fromEnvironment('USE_EMULATOR', defaultValue: false);
   if (useEmulator) {

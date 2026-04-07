@@ -11,6 +11,7 @@ class EditRinkListingScreen extends ConsumerStatefulWidget {
   final String initialCity;
   final String initialState;
   final String initialCountry;
+  final bool initialClaimed;
 
   const EditRinkListingScreen({
     super.key,
@@ -19,6 +20,7 @@ class EditRinkListingScreen extends ConsumerStatefulWidget {
     required this.initialCity,
     required this.initialState,
     required this.initialCountry,
+    this.initialClaimed = false,
   });
 
   @override
@@ -32,10 +34,12 @@ class _EditRinkListingScreenState extends ConsumerState<EditRinkListingScreen> {
   late final TextEditingController _stateController;
   late final TextEditingController _countryController;
   bool _submitting = false;
+  late bool _claimed;
 
   @override
   void initState() {
     super.initState();
+    _claimed = widget.initialClaimed;
     _nameController = TextEditingController(text: widget.initialName);
     _cityController = TextEditingController(text: widget.initialCity);
     _stateController = TextEditingController(text: widget.initialState);
@@ -70,6 +74,7 @@ class _EditRinkListingScreenState extends ConsumerState<EditRinkListingScreen> {
         'city': city,
         'state': state,
         'country': country,
+        'claimed': _claimed,
       });
 
       if (!mounted) return;
@@ -143,6 +148,24 @@ class _EditRinkListingScreenState extends ConsumerState<EditRinkListingScreen> {
               JBInput(
                 controller: _countryController,
                 label: 'Country',
+              ),
+              const SizedBox(height: 16),
+              SwitchListTile(
+                value: _claimed,
+                onChanged: (v) => setState(() => _claimed = v),
+                title: Text(
+                  'Claimed',
+                  style: TextStyle(
+                    color: isDark ? Colors.white70 : Colors.black87,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                subtitle: Text(
+                  'When on, users see a "Claimed" badge on this rink.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: isDark ? Colors.white54 : Colors.black54,
+                  ),
+                ),
               ),
               const SizedBox(height: 32),
               JBButton(

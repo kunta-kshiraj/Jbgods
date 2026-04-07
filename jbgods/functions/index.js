@@ -407,6 +407,57 @@ async function getAdmins() { return getUserIdsByRole('admin'); }
 async function getMembers() { return getUserIdsByRole('member'); }
 async function getOwners() { return getUserIdsByRole('owner'); }
 
+/** All app users who should receive push (members, admins, owners, masters). */
+async function getAppUserIds() {
+  const [members, admins, owners, masters] = await Promise.all([
+    getMembers(),
+    getAdmins(),
+    getOwners(),
+    getMasters(),
+  ]);
+  const set = new Set([...members, ...admins, ...owners, ...masters]);
+  return Array.from(set);
+}
+
+/** Get FCM tokens for given user IDs (users with fcmToken set). */
+async function getFcmTokensForUserIds(userIds) {
+  if (!userIds.length) return [];
+  const tokens = [];
+  for (let i = 0; i < userIds.length; i += 10) {
+    const chunk = userIds.slice(i, i + 10);
+    const snap = await db.collection('users').where(admin.firestore.FieldPath.documentId(), 'in', chunk).get();
+    snap.docs.forEach((d) => {
+      const t = d.data().fcmToken;
+      if (t && typeof t === 'string') tokens.push(t);
+    });
+  }
+  return tokens;
+}
+
+const FCM_BATCH_SIZE = 500;
+
+/** Send push notifications via FCM to the given user IDs. */
+async function sendPushToUsers(userIds, { title, body, data }) {
+  const tokens = await getFcmTokensForUserIds(userIds);
+  if (!tokens.length) return;
+  const dataStr = data ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])) : {};
+  for (let i = 0; i < tokens.length; i += FCM_BATCH_SIZE) {
+    const chunk = tokens.slice(i, i + FCM_BATCH_SIZE);
+    const message = {
+      notification: { title: title || 'JB Gods', body: body || '' },
+      data: { ...dataStr, type: data?.type || 'general' },
+      tokens: chunk,
+      android: { priority: 'high' },
+      apns: { payload: { aps: { sound: 'default', badge: 1 } } },
+    };
+    try {
+      await admin.messaging().sendEachForMulticast(message);
+    } catch (e) {
+      console.error('FCM send error:', e);
+    }
+  }
+}
+
 const BATCH_SIZE = 400; // Firestore batch limit is 500
 
 async function notifyUsers(userIds, { type, title, body, data }) {
@@ -468,7 +519,7 @@ exports.onOwnerRequestCreated = functions.firestore.document('owner_requests/{ui
   });
 });
 
-// 3. New update → notify masters only
+// 3. New update → in-app for masters; push for all app users (members, admins, owners, masters)
 exports.onUpdateCreated = functions.firestore.document('updates/{id}').onCreate(async (snap) => {
   const masters = await getMasters();
   await notifyUsers(masters, {
@@ -477,16 +528,30 @@ exports.onUpdateCreated = functions.firestore.document('updates/{id}').onCreate(
     body: 'A new event request has been submitted for review.',
     data: { updateId: snap.id },
   });
+  const appUserIds = await getAppUserIds();
+  await sendPushToUsers(appUserIds, {
+    title: 'New update posted',
+    body: 'Check out the latest update in the app.',
+    data: { type: 'update', updateId: snap.id },
+  });
 });
 
-// 4a. New event (after approval) → notify masters only
+// 4a. New event (after approval) → in-app for masters; push for all app users
 exports.onEventCreated = functions.firestore.document('events/{id}').onCreate(async (snap) => {
+  const data = snap.data() || {};
+  const eventTitle = data.title || 'New event';
   const masters = await getMasters();
   await notifyUsers(masters, {
     type: 'event',
     title: 'New Event Request',
     body: 'A new event request has been submitted for review.',
     data: { eventId: snap.id },
+  });
+  const appUserIds = await getAppUserIds();
+  await sendPushToUsers(appUserIds, {
+    title: 'New event posted',
+    body: eventTitle,
+    data: { type: 'event', eventId: snap.id },
   });
 });
 
@@ -525,9 +590,17 @@ exports.onRinkListingCreated = functions.firestore.document('rink_listings/{id}'
   });
 });
 
-// 7. Chat messages: no in-app notifications (masters-only feature; admins/normal users get none)
-exports.onMessageCreated = functions.firestore.document('messages/{id}').onCreate(() => {
-  return null; // no notifications
+// 7. Chat message → push for all app users (members, admins, owners, masters)
+exports.onMessageCreated = functions.firestore.document('messages/{id}').onCreate(async (snap) => {
+  const data = snap.data() || {};
+  const authorName = data.authorName || 'Someone';
+  const text = (data.text || '').slice(0, 80);
+  const appUserIds = await getAppUserIds();
+  await sendPushToUsers(appUserIds, {
+    title: 'New message in chat',
+    body: text ? `${authorName}: ${text}` : authorName + ' sent a message',
+    data: { type: 'chat' },
+  });
 });
 
 // 8. Delete notifications older than 3 days (run daily)

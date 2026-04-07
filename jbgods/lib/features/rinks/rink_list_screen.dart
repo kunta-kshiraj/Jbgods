@@ -6,11 +6,41 @@ import '../../data/auth_providers.dart';
 import 'add_rink_listing_screen.dart';
 import 'edit_rink_listing_screen.dart';
 
-class RinkListScreen extends ConsumerWidget {
+class RinkListScreen extends ConsumerStatefulWidget {
   const RinkListScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<RinkListScreen> createState() => _RinkListScreenState();
+}
+
+class _RinkListScreenState extends ConsumerState<RinkListScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(() {
+      setState(() => _searchQuery = _searchController.text.trim().toLowerCase());
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  static bool _matchesQuery(Map<String, dynamic> data, String query) {
+    if (query.isEmpty) return true;
+    final name = (data['name'] as String? ?? '').toLowerCase();
+    final city = (data['city'] as String? ?? '').toLowerCase();
+    final state = (data['state'] as String? ?? '').toLowerCase();
+    return name.contains(query) || city.contains(query) || state.contains(query);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final userRole = ref.watch(userRoleProvider);
@@ -39,6 +69,29 @@ class RinkListScreen extends ConsumerWidget {
       ),
       body: Column(
         children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search by rink name, city or state',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                        },
+                      )
+                    : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                filled: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
+            ),
+          ),
           if (isMaster) _PendingSection(firestore: firestore),
           Expanded(
             child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -61,18 +114,20 @@ class RinkListScreen extends ConsumerWidget {
                     final bt = (b.data()['createdAt'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
                     return bt.compareTo(at);
                   });
-                if (docs.isEmpty) {
+                final filtered = docs.where((d) => _matchesQuery(d.data(), _searchQuery)).toList();
+                if (filtered.isEmpty) {
                   return Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.ac_unit, size: 64, color: theme.colorScheme.primary.withOpacity(0.5)),
+                        Icon(Icons.search_off, size: 64, color: theme.colorScheme.primary.withOpacity(0.5)),
                         const SizedBox(height: 16),
                         Text(
-                          'No skating rinks yet',
+                          docs.isEmpty ? 'No skating rinks yet' : 'No rinks match "${_searchController.text.trim()}"',
                           style: theme.textTheme.titleMedium?.copyWith(
                             color: isDark ? Colors.white70 : Colors.black54,
                           ),
+                          textAlign: TextAlign.center,
                         ),
                       ],
                     ),
@@ -80,9 +135,9 @@ class RinkListScreen extends ConsumerWidget {
                 }
                 return ListView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                  itemCount: docs.length,
+                  itemCount: filtered.length,
                   itemBuilder: (context, index) {
-                    final doc = docs[index];
+                    final doc = filtered[index];
                     final data = doc.data();
                     return _RinkListingCard(
                       id: doc.id,
@@ -91,6 +146,7 @@ class RinkListScreen extends ConsumerWidget {
                       state: data['state'] as String? ?? '',
                       country: data['country'] as String? ?? '',
                       likeCount: (data['likeCount'] as num?)?.toInt() ?? 0,
+                      claimed: data['claimed'] == true,
                       isMaster: isMaster,
                       firestore: firestore,
                     );
@@ -252,6 +308,7 @@ class _RinkListingCard extends StatelessWidget {
   final String state;
   final String country;
   final int likeCount;
+  final bool claimed;
   final bool isMaster;
   final FirebaseFirestore firestore;
 
@@ -262,6 +319,7 @@ class _RinkListingCard extends StatelessWidget {
     required this.state,
     required this.country,
     required this.likeCount,
+    required this.claimed,
     required this.isMaster,
     required this.firestore,
   });
@@ -317,6 +375,7 @@ class _RinkListingCard extends StatelessWidget {
             initialCity: city,
             initialState: state,
             initialCountry: country,
+            initialClaimed: claimed,
           ),
         ),
       );
@@ -375,9 +434,12 @@ class _RinkListingCard extends StatelessWidget {
         elevation: 1,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         color: cardColor,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
             children: [
               Expanded(
                 child: Column(
@@ -430,6 +492,35 @@ class _RinkListingCard extends StatelessWidget {
               ),
             ],
           ),
+            ),
+            if (claimed)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade700,
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.2),
+                        blurRadius: 4,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    'Claimed',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
